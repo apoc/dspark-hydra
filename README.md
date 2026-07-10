@@ -85,9 +85,15 @@ reports/     tables, figures, RQ writeups
       (hard/soft/scratch + dense control) + Markov semi-AR head + confidence head.
       `scripts/test_draft.py` passes fwd/bwd for all §6 rows; active params matched
       (dense 2.03M ≈ MoE active 2.33M) at 3× MoE total capacity.
-- [~] Phase 4 — Train (losses + windowed dataloader + loop; training runs)
-- [ ] Phase 5 — Offline τ eval
-- [ ] Phase 6 — Correctness (lossless) gate
+- [~] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
+      dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
+      Loop validated (loss ↓ on smoke). All 4 variants training autonomously via
+      `scripts/run_experiment.sh` (tmux) once the production dump completes.
+- [~] **Phase 5 — Offline τ eval.** `eval/spec_decode.py` (draft-propose + target-verify +
+      accept/resample) + `scripts/eval_tau.py` (per-domain τ); orchestrated by `scripts/run_matrix.py`.
+- [x] **Phase 6 — Correctness (lossless) gate.** `eval/sampler.py` rejection sampler;
+      `scripts/test_losslessness.py` proves accepted-token KL to p^t ≈ 3e-5 for adversarial
+      drafts (uniform/peaked-wrong/noisy) — lossless by construction for any p^d.
 - [ ] Phase 7 — Serving (optional)
 - [ ] Phase 8 — Report (RQ1–RQ6)
 
