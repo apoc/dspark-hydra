@@ -97,8 +97,12 @@ reports/     tables, figures, RQ writeups
 - [x] **Phase 6 — Correctness (lossless) gate.** `eval/sampler.py` rejection sampler;
       `scripts/test_losslessness.py` proves accepted-token KL to p^t ≈ 3e-5 for adversarial
       drafts (uniform/peaked-wrong/noisy) — lossless by construction for any p^d, all variants.
-- [ ] Phase 7 — Serving (optional)
-- [ ] Phase 8 — Report (RQ1–RQ6)
+- [x] **Phase 8 — Report (RQ1–RQ6).** Full §6 matrix run (sanity-scale, 83k tokens) in
+      `reports/phase8_report.md` + `reports/run_matrix.json`. Headline: **E2 soft-reuse
+      macro-τ 0.788 > E1 hard 0.777 > C1 scratch 0.763 > B3 dense 0.755** at matched active
+      params; soft reuse best and recovers prose (0.570 vs dense 0.533). Gains concentrated
+      on code/math (not chat/prose as hypothesized) at this scale — directional support,
+      scale-up (vLLM-batched 1M-prompt dump) needed for a verdict.
 
 ## Phase status → run commands
 
