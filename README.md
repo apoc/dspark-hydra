@@ -85,15 +85,15 @@ reports/     tables, figures, RQ writeups
       (hard/soft/scratch + dense control) + Markov semi-AR head + confidence head.
       `scripts/test_draft.py` passes fwd/bwd for all §6 rows; active params matched
       (dense 2.03M ≈ MoE active 2.33M) at 3× MoE total capacity.
-- [~] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
+- [x] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
       dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
-      Loop validated (loss ↓ on smoke). **Knowledge-saturation autostop** (validation-plateau
-      early-stop, by-sequence split, min-steps floor, best-ckpt restore) instead of fixed steps.
-      All 4 variants train autonomously via `scripts/run_experiment.sh` (tmux) after the dump.
-- [~] **Phase 5 — Offline τ eval.** `eval/spec_decode.py` (draft-propose + target-verify +
-      accept/resample, returns per-round accepted counts) + `eval/analysis.py` (position-wise
-      conditional acceptance, specialization heatmap) + `scripts/eval_tau.py` (per-domain τ);
-      orchestrated by `scripts/run_matrix.py`.
+      **Knowledge-saturation autostop** (validation-plateau early-stop, by-sequence split,
+      min-steps floor, best-ckpt restore) instead of fixed steps — all 4 variants trained to
+      plateau (9.8k–15.6k steps) on the 83k-token dump.
+- [x] **Phase 5 — Offline τ eval.** `eval/spec_decode.py` (draft-propose + target-verify +
+      accept/resample) + `eval/analysis.py` (position-wise conditional acceptance,
+      specialization heatmap) + `scripts/eval_tau.py`, orchestrated by `scripts/run_matrix.py`.
+      Per-domain τ measured for all §6 variants (results below).
 - [x] **Phase 6 — Correctness (lossless) gate.** `eval/sampler.py` rejection sampler;
       `scripts/test_losslessness.py` proves accepted-token KL to p^t ≈ 3e-5 for adversarial
       drafts (uniform/peaked-wrong/noisy) — lossless by construction for any p^d, all variants.
