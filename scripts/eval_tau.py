@@ -49,7 +49,7 @@ def main():
     ap.add_argument("--corpus", default=str(_REPO_ROOT / "configs" / "corpus.yaml"))
     ap.add_argument("--per-domain", type=int, default=20)
     ap.add_argument("--max-new", type=int, default=128)
-    ap.add_argument("--skip", type=int, default=10000, help="offset into stream for held-out prompts")
+    ap.add_argument("--skip", type=int, default=100, help="held-out offset (dump trained on first ~100/domain)")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
@@ -70,9 +70,12 @@ def main():
     results = {}
     for dom, dspec in corpus["domains"].items():
         mode = dspec.get("mode", "chat")
-        prompts = stream_prompts(dspec["hf"], args.skip + args.per_domain,
-                                 strip_gutenberg_flag=dspec.get("strip_gutenberg", False))[args.skip:]
-        prompts = prompts[:args.per_domain]
+        pool = stream_prompts(dspec["hf"], args.skip + args.per_domain,
+                              strip_gutenberg_flag=dspec.get("strip_gutenberg", False))
+        held = pool[args.skip:]
+        if len(held) < args.per_domain:   # dataset smaller than skip -> use the tail as held-out
+            held = pool[-args.per_domain:] if len(pool) > args.per_domain else pool
+        prompts = held[:args.per_domain]
         taus, naccs = [], []
         gen = torch.Generator(device=device).manual_seed(args.seed)
         for p in prompts:

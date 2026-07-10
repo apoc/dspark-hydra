@@ -64,20 +64,23 @@ def main():
     for variant in args.variants:
         needs_C = dict(VARIANTS)[variant]
         out = ckdir / variant
-        cmd = [PY, "scripts/train_draft.py", "--variant", variant, "--dump", args.dump,
-               "--K", str(args.K), "--batch-size", str(args.batch_size),
-               "--patience", str(args.patience), "--min-steps", str(args.min_steps),
-               "--max-steps", str(args.max_steps), "--out", str(out)]
-        if needs_C:
-            cmd += ["--C", str(C_file), "--warm-init"]
-        rc = run(cmd, logs / f"train_{variant}.log")
-        if rc != 0:
-            summary[variant] = {"error": "train failed"}
-            continue
+        if (out / "draft.pt").exists():
+            print(f"[{variant}] checkpoint exists -> skip training", flush=True)
+        else:
+            cmd = [PY, "scripts/train_draft.py", "--variant", variant, "--dump", args.dump,
+                   "--K", str(args.K), "--batch-size", str(args.batch_size),
+                   "--patience", str(args.patience), "--min-steps", str(args.min_steps),
+                   "--max-steps", str(args.max_steps), "--out", str(out)]
+            if needs_C:
+                cmd += ["--C", str(C_file), "--warm-init"]
+            rc = run(cmd, logs / f"train_{variant}.log")
+            if rc != 0:
+                summary[variant] = {"error": "train failed"}
+                continue
 
         tau_out = reports / f"tau_{variant}.json"
         ecmd = [PY, "scripts/eval_tau.py", "--ckpt", str(out / "draft.pt"),
-                "--per-domain", str(args.per_domain_eval), "--out", str(tau_out)]
+                "--per-domain", str(args.per_domain_eval), "--max-new", "64", "--out", str(tau_out)]
         if needs_C:
             ecmd += ["--C", str(C_file)]
         run(ecmd, logs / f"eval_{variant}.log")
