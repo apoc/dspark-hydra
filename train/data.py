@@ -34,19 +34,21 @@ class WindowDataset(torch.utils.data.Dataset):
         pos = self.data["pos"]
         order = torch.argsort(seq * (int(pos.max()) + 1) + pos)
         self.windows: list[torch.Tensor] = []
+        self.window_seq: list[int] = []            # seq_id per window (for leak-free splits)
         cur, rows = None, []
         for r in order.tolist():
             s = int(seq[r])
             if s != cur:
-                self._emit(rows)
+                self._emit(rows, cur)
                 cur, rows = s, []
             rows.append(r)
-        self._emit(rows)
+        self._emit(rows, cur)
 
-    def _emit(self, rows: list[int]):
+    def _emit(self, rows: list[int], seq_id):
         g = self.gamma
         for b in range(0, len(rows) - g):
             self.windows.append(torch.tensor(rows[b:b + g + 1], dtype=torch.long))
+            self.window_seq.append(int(seq_id) if seq_id is not None else -1)
 
     def __len__(self):
         return len(self.windows)

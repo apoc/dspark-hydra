@@ -4,7 +4,7 @@ Runs each step as a subprocess for isolation. Intended for a long tmux run once 
 calibration dump is complete (has manifest.json).
 
 Run on Spark (tmux):
-    $PY scripts/run_matrix.py --dump data/calib_v1 --epochs 10 --per-domain-eval 20
+    $PY scripts/run_matrix.py --dump data/calib_v1 --patience 6 --per-domain-eval 20
 """
 
 from __future__ import annotations
@@ -41,7 +41,9 @@ def main():
     ap.add_argument("--dump", default=str(_REPO_ROOT / "data" / "calib_v1"))
     ap.add_argument("--C", default=str(_REPO_ROOT / "data" / "collapse" / "coact_k16"))
     ap.add_argument("--K", type=int, default=16)
-    ap.add_argument("--epochs", type=int, default=10)
+    ap.add_argument("--patience", type=int, default=6)
+    ap.add_argument("--min-steps", type=int, default=1000)
+    ap.add_argument("--max-steps", type=int, default=100000)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--per-domain-eval", type=int, default=20)
     ap.add_argument("--variants", nargs="*", default=[v for v, _ in VARIANTS])
@@ -63,8 +65,9 @@ def main():
         needs_C = dict(VARIANTS)[variant]
         out = ckdir / variant
         cmd = [PY, "scripts/train_draft.py", "--variant", variant, "--dump", args.dump,
-               "--K", str(args.K), "--epochs", str(args.epochs), "--batch-size", str(args.batch_size),
-               "--out", str(out)]
+               "--K", str(args.K), "--batch-size", str(args.batch_size),
+               "--patience", str(args.patience), "--min-steps", str(args.min_steps),
+               "--max-steps", str(args.max_steps), "--out", str(out)]
         if needs_C:
             cmd += ["--C", str(C_file), "--warm-init"]
         rc = run(cmd, logs / f"train_{variant}.log")

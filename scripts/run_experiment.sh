@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PY=~/devel/vllm/venv/bin/python
 DUMP=${DUMP:-data/calib_v1}
-EPOCHS=${EPOCHS:-3}
+PATIENCE=${PATIENCE:-6}
 EVAL_N=${EVAL_N:-12}
 
 echo "[$(date +%T)] waiting for dump manifest: $DUMP/manifest.json"
@@ -18,7 +18,7 @@ echo "[$(date +%T)] dump tokens: $($PY -c "import json;print(json.load(open('$DU
 echo "[$(date +%T)] verifying dump alignment (non-fatal)"
 $PY scripts/verify_dump.py --dump "$DUMP" || echo "WARN: verify failed, proceeding (alignment proven on smoke)"
 
-echo "[$(date +%T)] running run matrix (epochs=$EPOCHS eval_n=$EVAL_N)"
-$PY scripts/run_matrix.py --dump "$DUMP" --epochs "$EPOCHS" --per-domain-eval "$EVAL_N"
+echo "[$(date +%T)] running run matrix (saturation-stop, patience=$PATIENCE eval_n=$EVAL_N)"
+$PY scripts/run_matrix.py --dump "$DUMP" --patience "$PATIENCE" --per-domain-eval "$EVAL_N"
 
 echo "[$(date +%T)] DONE. See reports/run_matrix.json"

@@ -5,7 +5,7 @@ warm-inits MoE experts from centroids if present, and trains on the dump.
 
 Run on Spark (tmux for real runs):
     $PY scripts/train_draft.py --variant E1_hard --dump data/calib_v1 \
-        --C data/collapse/coact_k16/C.safetensors --epochs 10 --out ckpts/E1_hard
+        --C data/collapse/coact_k16/C.safetensors --patience 6 --out ckpts/E1_hard
 """
 
 from __future__ import annotations
@@ -60,10 +60,12 @@ def main():
     ap.add_argument("--k-prime", type=int, default=2)
     ap.add_argument("--gamma", type=int, default=5)
     ap.add_argument("--n-layers", type=int, default=4)
-    ap.add_argument("--epochs", type=int, default=10)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--max-steps", type=int, default=None)
+    ap.add_argument("--patience", type=int, default=6, help="saturation patience (evals w/o improvement)")
+    ap.add_argument("--eval-interval", type=int, default=200)
+    ap.add_argument("--min-steps", type=int, default=1000, help="floor before early-stop can trigger")
+    ap.add_argument("--max-steps", type=int, default=100000, help="safety cap")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -91,8 +93,9 @@ def main():
             print(f"warm-initialized {n} experts from centroids")
 
     out = train_draft(model, cfg, args.dump, embed, lm_head, C,
-                      device=device, epochs=args.epochs, batch_size=args.batch_size,
-                      lr=args.lr, max_steps=args.max_steps)
+                      device=device, batch_size=args.batch_size, lr=args.lr,
+                      patience=args.patience, eval_interval=args.eval_interval,
+                      min_steps=args.min_steps, max_steps=args.max_steps)
 
     save_dir = Path(args.out or (_REPO_ROOT / "ckpts" / args.variant))
     save_dir.mkdir(parents=True, exist_ok=True)
