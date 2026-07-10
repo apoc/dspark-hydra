@@ -32,7 +32,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
     embed = target.model.get_input_embeddings()
     lm_head = target.model.lm_head if hasattr(target.model, "lm_head") else target.model.get_output_embeddings()
     seq = prompt_ids.to(device)
-    taus = []
+    taus, n_accs_all = [], []
     C = C.to(device) if C is not None else None
 
     while seq.shape[1] - prompt_ids.shape[1] < max_new:
@@ -65,6 +65,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
             bonus = sample_from(pt[cfg.gamma - 1].unsqueeze(0), ub.unsqueeze(0))[0]
             new_tokens.append(bonus)
         taus.append(n_acc + (1 if n_acc == cfg.gamma else 0))
+        n_accs_all.append(n_acc)
 
         add = torch.stack(new_tokens).to(device).unsqueeze(0)
         seq = torch.cat([seq, add], dim=1)
@@ -72,4 +73,4 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
         if eos is not None and (add[0] == eos).any():
             break
 
-    return seq, taus
+    return seq, taus, n_accs_all

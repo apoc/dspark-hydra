@@ -24,6 +24,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 from draft.config import DraftConfig  # noqa: E402
 from draft.model import DraftModel  # noqa: E402
+from eval.analysis import position_wise_acceptance  # noqa: E402
 from eval.spec_decode import spec_decode  # noqa: E402
 from target.loader import load_target  # noqa: E402
 from target.corpus import stream_prompts  # noqa: E402
@@ -72,17 +73,19 @@ def main():
         prompts = stream_prompts(dspec["hf"], args.skip + args.per_domain,
                                  strip_gutenberg_flag=dspec.get("strip_gutenberg", False))[args.skip:]
         prompts = prompts[:args.per_domain]
-        taus = []
+        taus, naccs = [], []
         gen = torch.Generator(device=device).manual_seed(args.seed)
         for p in prompts:
             ids = build_prompt_ids(target, p, mode, dspec.get("prompt_tokens", 128))
-            _, t = spec_decode(target, draft, cfg, ids, C=C, max_new=args.max_new,
-                               inject_layers=inj, l_star=l_star, gen=gen)
+            _, t, na = spec_decode(target, draft, cfg, ids, C=C, max_new=args.max_new,
+                                   inject_layers=inj, l_star=l_star, gen=gen)
             if t:
                 taus.append(sum(t) / len(t))
+                naccs.extend(na)
         mean = sum(taus) / max(len(taus), 1)
-        results[dom] = {"mean_tau": mean, "n_prompts": len(taus)}
-        print(f"[{dom}] mean_tau={mean:.3f} over {len(taus)} prompts", flush=True)
+        posacc = position_wise_acceptance(naccs, cfg.gamma) if naccs else []
+        results[dom] = {"mean_tau": mean, "n_prompts": len(taus), "position_acceptance": posacc}
+        print(f"[{dom}] mean_tau={mean:.3f} pos_acc={['%.2f'%x for x in posacc]} over {len(taus)} prompts", flush=True)
 
     macro = sum(v["mean_tau"] for v in results.values()) / max(len(results), 1)
     results["macro_avg_tau"] = macro
