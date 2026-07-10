@@ -1,0 +1,39 @@
+# Calibration + draft-training corpus (§7.1).
+# Domain mixture à la DSpark (Open-PerfectBlend) + an explicit prose/literary slice
+# to probe the high-entropy hypothesis (RQ3). Fractions are targets for the full run;
+# `dump_calibration.py --limit N` samples a small validated slice first.
+
+domains:
+  math:
+    fraction: 0.39
+    mode: chat            # instruction -> chat template -> generate response
+    hf: {path: openai/gsm8k, name: main, split: train, field: question}
+  code:
+    fraction: 0.39
+    mode: chat
+    hf: {path: google-research-datasets/mbpp, name: full, split: train, field: text}
+  chat:
+    fraction: 0.18
+    mode: chat
+    hf: {path: tatsu-lab/alpaca, split: train, field: instruction}
+  prose:
+    fraction: 0.04
+    mode: completion      # raw text chunk -> continue (no chat template); high-entropy probe
+    prompt_tokens: 128     # tokens of context fed before continuation
+    strip_gutenberg: true  # cut license header/footer; sample from the book body
+    hf: {path: manu/project_gutenberg, split: en, field: text}
+
+generation:
+  enable_thinking: false      # non-thinking mode (§7.1)
+  max_new_tokens: 256
+  # sampling: recommended non-thinking Qwen defaults; overridden by generation_config.json if present
+  temperature: 0.7
+  top_p: 0.8
+  top_k: 20
+
+dump:
+  inject_layers: [19, 31, 39]   # KV-injection source set (default §4.1)
+  l_star: 39                    # router source layer (default §5.5)
+  anchors_per_seq: 0            # 0 = keep all response positions; >0 = random-sample this many
+  tokens_per_shard: 65536
+  dtype: bfloat16
