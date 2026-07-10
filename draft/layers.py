@@ -76,12 +76,11 @@ class InjectedAttention(nn.Module):
         keys = torch.cat([kc, k], dim=2)     # (B,nh,Tc+T,hd)
         vals = torch.cat([vc, v], dim=2)
         scores = (q @ keys.transpose(-1, -2)) / (self.hd ** 0.5)  # (B,nh,T,Tc+T)
-        # mask: context fully visible; draft causal
-        cmask = torch.zeros(T, Tc, device=x.device)
-        dmask = torch.full((T, T), float("-inf"), device=x.device).triu(1)
+        # mask: context fully visible; draft causal. Compute attention in fp32 for stability.
+        cmask = torch.zeros(T, Tc, device=x.device, dtype=torch.float32)
+        dmask = torch.full((T, T), float("-inf"), device=x.device, dtype=torch.float32).triu(1)
         mask = torch.cat([cmask, dmask], dim=1)
-        scores = scores + mask[None, None]
-        attn = scores.softmax(-1)
+        attn = (scores.float() + mask[None, None]).softmax(-1).to(vals.dtype)
         out = attn @ vals                    # (B,nh,T,hd)
         out = out.transpose(1, 2).reshape(B, T, H)
         return self.o(out)

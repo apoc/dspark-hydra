@@ -79,7 +79,7 @@ class DraftMoE(nn.Module):
         scores = self._group_scores(hf, df, C)            # (N,K)
         gate = torch.softmax(scores, dim=-1)
         topw, topi = gate.topk(cfg.k_prime, dim=-1)       # (N,k')
-        topw = topw / (topw.sum(-1, keepdim=True) + 1e-9)  # renormalize active
+        topw = (topw / (topw.sum(-1, keepdim=True) + 1e-9)).to(hf.dtype)  # renorm active, match dtype
         self.last_gate = gate
 
         out = torch.zeros_like(hf)
