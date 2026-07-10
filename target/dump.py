@@ -46,11 +46,16 @@ def generate_response(target, prompt_text: str, gen_cfg: dict, mode: str = "chat
         messages = [{"role": "user", "content": prompt_text}]
         try:
             ids = tok.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt",
+                messages, add_generation_prompt=True, return_tensors="pt", return_dict=True,
                 enable_thinking=gen_cfg.get("enable_thinking", False),
             )
         except TypeError:
-            ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt")
+            ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt", return_dict=True)
+    # normalize BatchEncoding / dict / tensor -> input_ids tensor
+    if hasattr(ids, "input_ids"):
+        ids = ids.input_ids
+    elif isinstance(ids, dict):
+        ids = ids["input_ids"]
     ids = ids.to(device)
     response_start = ids.shape[1]
 
