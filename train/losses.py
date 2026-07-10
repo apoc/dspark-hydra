@@ -73,7 +73,7 @@ def drafting_loss(out: dict, targets: torch.Tensor, pt: torch.Tensor, cfg,
             P = gate.mean(0)                     # mean prob per group
             f = torch.zeros_like(P)
             sel = gate.topk(cfg.k_prime, dim=-1).indices
-            f.scatter_add_(0, sel.reshape(-1), torch.ones(sel.numel(), device=gate.device))
+            f.scatter_add_(0, sel.reshape(-1), torch.ones(sel.numel(), device=gate.device, dtype=f.dtype))
             f = f / sel.numel()   # fraction of routed slots per group (sums to 1)
             lb = lb + cfg.K * (f * P).sum()
         L_bal = lb / len(aux["gate"])
