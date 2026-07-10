@@ -27,7 +27,7 @@ def _anchor_signals(target, res, pos, inject_layers, l_star):
 @torch.no_grad()
 def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_layers=(19, 31, 39),
                 l_star=39, gen=None, greedy_draft=False):
-    """Run speculative decoding from prompt_ids:(1,L0). Returns (out_ids, taus:list)."""
+    """Run speculative decoding from prompt_ids:(1,L0). Returns (out_ids, taus, n_accs)."""
     device = next(target.model.parameters()).device
     embed = target.model.get_input_embeddings()
     lm_head = target.model.lm_head if hasattr(target.model, "lm_head") else target.model.get_output_embeddings()

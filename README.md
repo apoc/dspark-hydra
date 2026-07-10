@@ -87,13 +87,16 @@ reports/     tables, figures, RQ writeups
       (dense 2.03M ≈ MoE active 2.33M) at 3× MoE total capacity.
 - [~] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
       dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
-      Loop validated (loss ↓ on smoke). All 4 variants training autonomously via
-      `scripts/run_experiment.sh` (tmux) once the production dump completes.
+      Loop validated (loss ↓ on smoke). **Knowledge-saturation autostop** (validation-plateau
+      early-stop, by-sequence split, min-steps floor, best-ckpt restore) instead of fixed steps.
+      All 4 variants train autonomously via `scripts/run_experiment.sh` (tmux) after the dump.
 - [~] **Phase 5 — Offline τ eval.** `eval/spec_decode.py` (draft-propose + target-verify +
-      accept/resample) + `scripts/eval_tau.py` (per-domain τ); orchestrated by `scripts/run_matrix.py`.
+      accept/resample, returns per-round accepted counts) + `eval/analysis.py` (position-wise
+      conditional acceptance, specialization heatmap) + `scripts/eval_tau.py` (per-domain τ);
+      orchestrated by `scripts/run_matrix.py`.
 - [x] **Phase 6 — Correctness (lossless) gate.** `eval/sampler.py` rejection sampler;
       `scripts/test_losslessness.py` proves accepted-token KL to p^t ≈ 3e-5 for adversarial
-      drafts (uniform/peaked-wrong/noisy) — lossless by construction for any p^d.
+      drafts (uniform/peaked-wrong/noisy) — lossless by construction for any p^d, all variants.
 - [ ] Phase 7 — Serving (optional)
 - [ ] Phase 8 — Report (RQ1–RQ6)
 
