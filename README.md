@@ -63,20 +63,9 @@ reports/     tables, figures, RQ writeups
 
 ## Infrastructure & workflow
 
-- **Code is authored locally** (`~/devel/dspark-hydra`, macOS). It is the source of truth.
-- **All compute runs on DGX Spark** (SSH `localhost:5555`, user `apoc`; GB10, 128GB unified, 1 GPU).
-- **Sync:** local `git push` → `git pull` on Spark at `~/devel/dspark-hydra` (remote
-  `github.com/apoc/dspark-hydra`, cloned via HTTPS). Never edit on Spark directly.
-- **Python env on Spark:** `~/devel/vllm/venv` (transformers 5.9.0, torch 2.11.0+cu130,
-  safetensors 0.7.0, CUDA). Do not install packages; the env is pre-provisioned.
-- **Model on Spark:** `~/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/snapshots/995ad96.../`
-  (BF16, 26 shards, 67 GB). FP8 variant also cached. Paths live in `configs/model.yaml`.
-- **Fast loading (GB10):** unpinned H2D on GB10 is ~0.16 GB/s (a 67GB CUDA load takes
-  ~450s). `target.loader.move_to_cuda_pinned` loads on CPU then streams to GPU through
-  pinned memory (~18 GB/s) — full load ~7s warm, ~20s cold. Warm the page cache first:
-  `ls <blobs>/* | xargs -P8 -I{} cat {} >/dev/null`.
-- `doc/` and `banks/` are gitignored.
-
+> Operational details (Spark access, sync flow, Python env, model paths, fast-loading,
+> run commands) live in `AGENTS.md` (gitignored). Code is authored locally and synced to
+> the DGX Spark for all compute.
 ## Status
 
 - [x] **Phase 0 — Env & validation.** `scripts/validate_config.py` asserts every §1
@@ -102,19 +91,8 @@ reports/     tables, figures, RQ writeups
 - [ ] Phase 7 — Serving (optional)
 - [ ] Phase 8 — Report (RQ1–RQ6)
 
-## Running (on Spark, after `git pull`; `PY=~/devel/vllm/venv/bin/python`)
+## Phase status → run commands
 
-```bash
-# warm the model page cache first (one-time per session): ~12s
-ls ~/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/blobs/* | xargs -P8 -I{} cat {} >/dev/null
-
-$PY scripts/validate_config.py                                            # Phase 0
-$PY scripts/dump_calibration.py --per-domain 100 --out data/calib_v1      # Phase 1 (tmux for scale)
-$PY scripts/verify_dump.py --dump data/calib_v1                           # Phase 1 gate
-$PY scripts/build_C.py --dump data/calib_v1 --K 16 --warm-init \
-     --out data/collapse/coact_k16                                        # Phase 2
-CUDA_VISIBLE_DEVICES="" $PY scripts/test_draft.py                         # Phase 3 (toy fwd/bwd)
-$PY scripts/train_draft.py --variant E1_hard --dump data/calib_v1 ...     # Phase 4
-```
-
-Long jobs run in tmux: `tmux new -d -s <name> '<cmd> 2>&1 | tee logs/<name>.log'`.
+Per-phase run commands are in `AGENTS.md`. Scripts: `validate_config.py` (0),
+`dump_calibration.py` / `verify_dump.py` (1), `build_C.py` (2), `test_draft.py` (3),
+`train_draft.py` (4), `test_losslessness.py` (6).

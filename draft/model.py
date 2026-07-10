@@ -68,5 +68,35 @@ class DraftModel(nn.Module):
                 aux["gate"].append(f.last_gate)
         return {"p_logits": p_logits, "conf_logit": conf_logit, "conf": conf, "hidden": h, "aux": aux}
 
+    @torch.no_grad()
+    def propose(self, anchor_id, hidden_inject, d, embed, lm_head, C=None, greedy=False, gen=None):
+        """Semi-AR block proposal: backbone once (parallel), Markov head sequential.
+
+        Returns (tokens:(B,gamma), pd:(B,gamma,V)) — the drafted tokens and their p^d.
+        """
+        from eval.sampler import sample_from
+        B = anchor_id.shape[0]
+        cfg = self.cfg
+        anchor_emb = embed(anchor_id).unsqueeze(1)
+        masks = self.mask_emb.unsqueeze(0).expand(B, -1, -1)
+        x = torch.cat([anchor_emb, masks], dim=1)
+        ctx = self.injector(hidden_inject)
+        d_seq = d.unsqueeze(1).expand(B, cfg.gamma, -1) if (d is not None and d.dim() == 2) else d
+        h = self.backbone(x, ctx, d_seq, C)                          # (B,g,H)
+        U = lm_head(h)                                                # (B,g,V)
+
+        toks, pds, prev = [], [], anchor_id
+        for k in range(cfg.gamma):
+            feat = self.markov.token_feature(prev)                   # (B,r)
+            logits = U[:, k] + self.markov.W2(feat)                  # (B,V)
+            pd = torch.softmax(logits.float(), dim=-1)
+            if greedy:
+                t = pd.argmax(-1)
+            else:
+                u = torch.rand(B, generator=gen, device=pd.device)
+                t = sample_from(pd, u)
+            toks.append(t); pds.append(pd); prev = t
+        return torch.stack(toks, 1), torch.stack(pds, 1)
+
     def trainable_parameters(self):
         return [p for p in self.parameters() if p.requires_grad]
