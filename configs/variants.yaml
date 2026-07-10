@@ -1,0 +1,25 @@
+# Run matrix (§6).  Each entry maps to one training + eval job.
+#
+# B0  native-mtp1       ships with target; no training required
+# B1  eagle3-ar         1-layer autoregressive (AR reference)
+# B2  dflash-parallel   5-layer parallel, no sequential head
+# B3  dspark-dense      semi-AR, single FFN  (paper reproduction / primary control)
+# E1  dspark-moe-hard   semi-AR + K-expert MoE, Variant A (frozen C)
+# E2  dspark-moe-soft   semi-AR + K-expert MoE, Variant B (distilled router)
+# C1  dspark-moe-scratch semi-AR + K-expert MoE, from-scratch router
+
+draft:
+  backbone_layers: 4        # default 3–5; ablation axis
+  hidden_size: 2048
+  kv_injection_layers: [19, 31, 39]   # full-attn source set (RQ5)
+
+moe:
+  K: 16                   # draft experts; ablation {8,16,32,64}
+  k_prime: 2              # top-k' active; ablation {1,2,4}
+  expert_ffn_width: 512   # mirror target; ablation 1024
+  router_source_layer: 39 # ℓ*; ablation {19,27,39,aggregate}
+  descriptor_ema: false   # EMA smoothing over recent tokens
+
+collapse:
+  method: co_activation   # {co_activation, weight_cluster, learned}
+  warm_init: false        # initialise draft experts from cluster centroids

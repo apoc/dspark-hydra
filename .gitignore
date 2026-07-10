@@ -1,0 +1,38 @@
+doc/
+banks/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Data / checkpoints (large artefacts, not committed)
+data/
+*.pt
+*.safetensors
+*.bin
+*.ckpt
+
+# Reports output (committed selectively by hand)
+reports/*.png
+reports/*.pdf
+reports/*.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

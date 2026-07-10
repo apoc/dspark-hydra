@@ -1,0 +1,10 @@
+# Training hyper-parameters (§7.2).
+gamma: 5                  # draft block size; sweep {4,8,12,16}
+epochs: 10
+loss_weights:
+  ce: 0.1
+  tv: 0.9
+  conf: 1.0
+  route: 0.01             # Variant B / control only
+  bal: 0.001              # Variant B / control only
+position_decay: true      # w_k = exp(-(k-1)/gamma)
