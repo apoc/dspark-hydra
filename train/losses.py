@@ -54,7 +54,7 @@ def drafting_loss(out: dict, targets: torch.Tensor, pt: torch.Tensor, cfg,
     L_conf = F.binary_cross_entropy(conf.float(), cstar)
 
     loss = w_ce * L_ce + w_tv * L_tv + w_conf * L_conf
-    logs = {"L_ce": float(L_ce), "L_tv": float(L_tv), "L_conf": float(L_conf)}
+    logs = {"L_ce": L_ce.detach().item(), "L_tv": L_tv.detach().item(), "L_conf": L_conf.detach().item()}
 
     aux = out.get("aux", {})
     if cfg.router_mode == "soft" and aux.get("group_logits") and aux.get("router_logits"):
@@ -65,7 +65,7 @@ def drafting_loss(out: dict, targets: torch.Tensor, pt: torch.Tensor, cfg,
             kl = kl + F.kl_div(pred, tgt, reduction="batchmean")
         L_route = kl / len(aux["group_logits"])
         loss = loss + lambda_route * L_route
-        logs["L_route"] = float(L_route)
+        logs["L_route"] = L_route.detach().item()
 
     if cfg.router_mode in ("soft", "scratch") and aux.get("gate"):
         lb = 0.0
@@ -78,7 +78,7 @@ def drafting_loss(out: dict, targets: torch.Tensor, pt: torch.Tensor, cfg,
             lb = lb + cfg.K * (f * P).sum()
         L_bal = lb / len(aux["gate"])
         loss = loss + lambda_bal * L_bal
-        logs["L_bal"] = float(L_bal)
+        logs["L_bal"] = L_bal.detach().item()
 
-    logs["loss"] = float(loss)
+    logs["loss"] = loss.detach().item()
     return {"loss": loss, "logs": logs}
