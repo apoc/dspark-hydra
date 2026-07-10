@@ -22,50 +22,9 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
+from target.corpus import stream_prompts  # noqa: E402
 from target.dump import ShardWriter, extract_records, generate_response  # noqa: E402
 from target.loader import load_target  # noqa: E402
-
-
-def _strip_gutenberg(text: str) -> str | None:
-    """Return the book body between the START/END markers, else None."""
-    up = text
-    s = up.find("*** START OF THE PROJECT GUTENBERG")
-    if s != -1:
-        s = up.find("\n", s)
-        e = up.find("*** END OF THE PROJECT GUTENBERG")
-        body = up[s:e if e != -1 else None].strip()
-    else:
-        body = text.strip()
-    # skip any residual front matter; require enough body to form a context + continuation
-    if len(body) < 2000:
-        return None
-    return body[500:]  # nudge past chapter headers / TOC
-
-
-def stream_prompts(hf: dict, n: int, strip_gutenberg: bool = False):
-    from datasets import load_dataset
-
-    kw = {"streaming": True, "split": hf["split"]}
-    if hf.get("name"):
-        ds = load_dataset(hf["path"], hf["name"], **kw)
-    else:
-        ds = load_dataset(hf["path"], **kw)
-    field = hf["field"]
-    out = []
-    for ex in ds:
-        txt = ex.get(field)
-        if not txt:
-            continue
-        txt = str(txt)
-        if strip_gutenberg:
-            txt = _strip_gutenberg(txt)
-            if txt is None:
-                continue
-        if len(txt.strip()) > 0:
-            out.append(txt)
-        if len(out) >= n:
-            break
-    return out
 
 
 def main():
@@ -99,7 +58,7 @@ def main():
         mode = dspec.get("mode", "chat")
         ptoks = dspec.get("prompt_tokens", 128)
         print(f"\n[{dom}] streaming {n} prompts ({dspec['hf']['path']}, mode={mode})", flush=True)
-        prompts = stream_prompts(dspec["hf"], n, strip_gutenberg=dspec.get("strip_gutenberg", False))
+        prompts = stream_prompts(dspec["hf"], n, strip_gutenberg_flag=dspec.get("strip_gutenberg", False))
         print(f"[{dom}] got {len(prompts)} prompts; generating+dumping ...", flush=True)
 
         td = time.time()
