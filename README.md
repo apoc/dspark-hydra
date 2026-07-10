@@ -71,6 +71,10 @@ reports/     tables, figures, RQ writeups
   safetensors 0.7.0, CUDA). Do not install packages; the env is pre-provisioned.
 - **Model on Spark:** `~/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/snapshots/995ad96.../`
   (BF16, 26 shards, 67 GB). FP8 variant also cached. Paths live in `configs/model.yaml`.
+- **Fast loading (GB10):** unpinned H2D on GB10 is ~0.16 GB/s (a 67GB CUDA load takes
+  ~450s). `target.loader.move_to_cuda_pinned` loads on CPU then streams to GPU through
+  pinned memory (~18 GB/s) — full load ~7s warm, ~20s cold. Warm the page cache first:
+  `ls <blobs>/* | xargs -P8 -I{} cat {} >/dev/null`.
 - `doc/` and `banks/` are gitignored.
 
 ## Status
