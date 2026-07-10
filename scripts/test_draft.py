@@ -84,8 +84,8 @@ def run_variant(mode: str, V: int = 512, B: int = 4, seed: int = 0):
     L_conf = F.binary_cross_entropy(conf, cstar)
     loss = 0.1 * L_ce + 0.9 * L_tv + 1.0 * L_conf
     if mode == "soft" and out["aux"]["group_logits"]:
-        tgt_g = torch.softmax(out["aux"]["group_logits"][0], dim=-1)
-        pred_g = torch.log_softmax(model.backbone.layers[0].ffn.router(torch.randn(B, cfg.hidden_size)), -1)
+        tgt_g = torch.softmax(out["aux"]["group_logits"][0], dim=-1)      # (N,K) distill target
+        pred_g = torch.log_softmax(out["aux"]["router_logits"][0], dim=-1)  # (N,K) draft router
         loss = loss + 0.01 * F.kl_div(pred_g, tgt_g, reduction="batchmean")
 
     loss.backward()

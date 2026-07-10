@@ -52,8 +52,9 @@ class DraftMoE(nn.Module):
         self.shared = SwiGLU(cfg.hidden_size, cfg.moe_intermediate_size) if cfg.n_shared else None
         if cfg.router_mode in ("soft", "scratch"):
             self.router = nn.Linear(cfg.hidden_size, cfg.K, bias=False)
-        self.last_group_logits = None  # (…,K) distillation target cache (soft)
-        self.last_gate = None          # (…,K) selection weights for aux balance loss
+        self.last_group_logits = None   # (N,K) distillation target = C @ softmax(d) (soft)
+        self.last_router_logits = None  # (N,K) draft router output (soft/scratch)
+        self.last_gate = None           # (N,K) selection weights for aux balance loss
 
     def _group_scores(self, h, d, C):
         """Return group scores (N,K). hard/soft distill target = C @ softmax(d)."""
@@ -61,12 +62,12 @@ class DraftMoE(nn.Module):
         if cfg.router_mode == "hard":
             p = torch.softmax(d.float(), dim=-1)          # (N,E)
             return p @ C.to(p.dtype).t()                  # (N,K)
+        # soft caches the distillation target; both soft/scratch use the draft router
         if cfg.router_mode == "soft":
             p = torch.softmax(d.float(), dim=-1)
-            self.last_group_logits = (p @ C.to(p.dtype).t())  # distill target
-            return self.router(h)
-        # scratch
-        return self.router(h)
+            self.last_group_logits = (p @ C.to(p.dtype).t())
+        self.last_router_logits = self.router(h)
+        return self.last_router_logits
 
     def forward(self, x, d, C):
         cfg = self.cfg

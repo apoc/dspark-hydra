@@ -57,12 +57,14 @@ class DraftModel(nn.Module):
         p_logits, token_feat = self.markov(h, prev_tokens, lm_head)  # (B,g,V),(B,g,r)
         conf_logit, conf = self.conf(h, token_feat)                  # (B,g)
 
-        aux = {"group_logits": [], "gate": []}
+        aux = {"group_logits": [], "router_logits": [], "gate": []}
         for layer in self.backbone.layers:
             f = layer.ffn
-            if hasattr(f, "last_group_logits") and f.last_group_logits is not None:
+            if getattr(f, "last_group_logits", None) is not None:
                 aux["group_logits"].append(f.last_group_logits)
-            if hasattr(f, "last_gate") and f.last_gate is not None:
+            if getattr(f, "last_router_logits", None) is not None:
+                aux["router_logits"].append(f.last_router_logits)
+            if getattr(f, "last_gate", None) is not None:
                 aux["gate"].append(f.last_gate)
         return {"p_logits": p_logits, "conf_logit": conf_logit, "conf": conf, "hidden": h, "aux": aux}
 
