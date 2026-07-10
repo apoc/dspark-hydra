@@ -58,30 +58,75 @@ class Target:
         return [i for i in range(self.num_layers) if (i + 1) % interval == 0]
 
 
+def move_to_cuda_pinned(model, device: str = "cuda", chunk_bytes: int = 512 * 1024 * 1024) -> None:
+    """Stream a CPU-resident model to CUDA via pinned memory, in place.
+
+    On GB10 unified memory, pageable (unpinned) H2D runs ~0.16 GB/s while pinned
+    runs ~18 GB/s. We pin each tensor into a reusable staging buffer, copy to GPU,
+    and free the CPU copy so peak memory stays ~model-size (both halves live in the
+    same 128GB pool).
+    """
+    staging = torch.empty(chunk_bytes, dtype=torch.uint8, pin_memory=True)
+
+    def move(t: torch.Tensor) -> torch.Tensor:
+        if t.device.type == "cuda":
+            return t
+        n = t.numel() * t.element_size()
+        src = t.contiguous()
+        if n <= chunk_bytes:
+            buf = staging[:n].view(t.dtype).view(t.shape)
+            buf.copy_(src)
+            out = buf.to(device, non_blocking=True)
+            torch.cuda.synchronize()
+        else:
+            # tensor larger than staging buffer: pin it directly (rare: big experts)
+            out = src.pin_memory().to(device, non_blocking=True)
+            torch.cuda.synchronize()
+        return out
+
+    with torch.no_grad():
+        for _, mod in model.named_modules():
+            for name, p in list(mod._parameters.items()):
+                if p is None:
+                    continue
+                mod._parameters[name] = torch.nn.Parameter(move(p.data), requires_grad=False)
+            for name, b in list(mod._buffers.items()):
+                if b is None:
+                    continue
+                mod._buffers[name] = move(b)
+    torch.cuda.synchronize()
+
+
 def load_target(
     model_yaml: str | os.PathLike | None = None,
     dtype: torch.dtype = torch.bfloat16,
     device_map: str | dict = "cuda",
     drop_vision: bool = True,
 ) -> Target:
-    """Load model + tokenizer. Frozen (eval, requires_grad=False)."""
+    """Load model + tokenizer. Frozen (eval, requires_grad=False).
+
+    For a CUDA target, load on CPU (near-free from warm page cache) then stream to
+    GPU through pinned memory (~113x faster than transformers' default unpinned H2D
+    on GB10).
+    """
     from transformers import AutoConfig, AutoModelForImageTextToText, AutoTokenizer
 
     path = resolve_model_path(model_yaml)
     config = AutoConfig.from_pretrained(path)
     tokenizer = AutoTokenizer.from_pretrained(path)
 
-    model = AutoModelForImageTextToText.from_pretrained(
-        path, dtype=dtype, device_map=device_map
-    )
+    want_cuda = device_map == "cuda" and torch.cuda.is_available()
+    load_map = "cpu" if want_cuda else device_map
+    model = AutoModelForImageTextToText.from_pretrained(path, dtype=dtype, device_map=load_map)
     model.eval()
     model.requires_grad_(False)
 
     if drop_vision and hasattr(model.model, "visual"):
-        # free the vision tower; text drafting never touches it
         model.model.visual = None
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+
+    if want_cuda:
+        move_to_cuda_pinned(model)
+        torch.cuda.empty_cache()
 
     text_config = config.get_text_config()
     return Target(model=model, tokenizer=tokenizer, text_config=text_config, path=path)
