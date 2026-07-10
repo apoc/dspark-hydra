@@ -84,18 +84,37 @@ reports/     tables, figures, RQ writeups
       (a) full-attn layer hiddens, (b) per-layer 256-way router logits, (c) the native
       MTP-1 head (loaded from checkpoint; HF drops `mtp.*` on load, so we load it
       directly). All checks pass on transformers 5.9.0.
-- [ ] Phase 1 — Instrumentation dump (hiddens + router logits + target dists)
-- [ ] Phase 2 — Collapse map `C`
-- [ ] Phase 3 — Draft model (all variants)
-- [ ] Phase 4 — Train
+- [x] **Phase 1 — Instrumentation dump.** `scripts/dump_calibration.py` generates target
+      responses (chat / prose-completion) and teacher-forces one forward to persist per-token
+      hiddens + router logits + next token to sharded safetensors (`target/dump.py`).
+      `scripts/verify_dump.py` proves p^t-reconstruction alignment (hidden_final[i]→next_token[i]:
+      mean p 0.87, top-1 0.94, vs 111× lower shifted control).
+- [x] **Phase 2 — Collapse map `C`.** `collapse/` builds the 256→K map: co-activation (PMI +
+      pure-torch spectral clustering, default), weight-similarity (+centroid warm-init), learned.
+      `scripts/build_C.py` emits C + balance stats + domain-overlap report. Pure torch (no sklearn/scipy).
+- [x] **Phase 3 — Draft model.** `draft/` = KV-injected backbone + domain-routed MoE
+      (hard/soft/scratch + dense control) + Markov semi-AR head + confidence head.
+      `scripts/test_draft.py` passes fwd/bwd for all §6 rows; active params matched
+      (dense 2.03M ≈ MoE active 2.33M) at 3× MoE total capacity.
+- [~] Phase 4 — Train (losses + windowed dataloader + loop; training runs)
 - [ ] Phase 5 — Offline τ eval
 - [ ] Phase 6 — Correctness (lossless) gate
 - [ ] Phase 7 — Serving (optional)
 - [ ] Phase 8 — Report (RQ1–RQ6)
 
-## Running Phase 0
+## Running (on Spark, after `git pull`; `PY=~/devel/vllm/venv/bin/python`)
 
 ```bash
-# on Spark, after git pull
-~/devel/vllm/venv/bin/python scripts/validate_config.py
+# warm the model page cache first (one-time per session): ~12s
+ls ~/.cache/huggingface/hub/models--Qwen--Qwen3.6-35B-A3B/blobs/* | xargs -P8 -I{} cat {} >/dev/null
+
+$PY scripts/validate_config.py                                            # Phase 0
+$PY scripts/dump_calibration.py --per-domain 100 --out data/calib_v1      # Phase 1 (tmux for scale)
+$PY scripts/verify_dump.py --dump data/calib_v1                           # Phase 1 gate
+$PY scripts/build_C.py --dump data/calib_v1 --K 16 --warm-init \
+     --out data/collapse/coact_k16                                        # Phase 2
+CUDA_VISIBLE_DEVICES="" $PY scripts/test_draft.py                         # Phase 3 (toy fwd/bwd)
+$PY scripts/train_draft.py --variant E1_hard --dump data/calib_v1 ...     # Phase 4
 ```
+
+Long jobs run in tmux: `tmux new -d -s <name> '<cmd> 2>&1 | tee logs/<name>.log'`.

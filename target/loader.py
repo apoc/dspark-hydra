@@ -58,6 +58,41 @@ class Target:
         return [i for i in range(self.num_layers) if (i + 1) % interval == 0]
 
 
+def load_embed_lm_head(model_yaml=None, device: str = "cuda", dtype=torch.bfloat16):
+    """Load ONLY the frozen token embedding + LM head (~2GB), not the full 67GB target.
+
+    Training the draft needs only these borrowed tensors. Returns (embed, lm_head,
+    text_config) with the modules on `device` and frozen.
+    """
+    import json
+    import os as _os
+
+    from safetensors import safe_open
+    from transformers import AutoConfig
+
+    path = _os.path.expanduser(resolve_model_path(model_yaml))
+    cfg = AutoConfig.from_pretrained(path).get_text_config()
+    wm = json.load(open(_os.path.join(path, "model.safetensors.index.json")))["weight_map"]
+    emb_key = "model.language_model.embed_tokens.weight"
+    lm_key = "lm_head.weight"
+
+    def _get(key):
+        with safe_open(_os.path.join(path, wm[key]), framework="pt", device="cpu") as f:
+            t = f.get_tensor(key).to(dtype)
+        return t.pin_memory().to(device, non_blocking=True) if device == "cuda" else t.to(device)
+
+    ew = _get(emb_key)          # (V,H)
+    lw = _get(lm_key)           # (V,H)
+    # meta-init the modules (no host alloc), then bind the already-on-device weights
+    embed = torch.nn.Embedding(ew.shape[0], ew.shape[1], device="meta")
+    embed.weight = torch.nn.Parameter(ew, requires_grad=False)
+    lm_head = torch.nn.Linear(lw.shape[1], lw.shape[0], bias=False, device="meta")
+    lm_head.weight = torch.nn.Parameter(lw, requires_grad=False)
+    if device == "cuda":
+        torch.cuda.synchronize()
+    return embed, lm_head, cfg
+
+
 def move_to_cuda_pinned(model, device: str = "cuda", chunk_bytes: int = 512 * 1024 * 1024) -> None:
     """Stream a CPU-resident model to CUDA via pinned memory, in place.
 
