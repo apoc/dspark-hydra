@@ -105,8 +105,9 @@ proven rejection sampler; `scripts/test_losslessness.py` shows accepted-token KL
 1. **Scale:** 83k training tokens is ~1% of the spec's 1–1.5M-prompt target. Absolute τ is
    low (~0.75–0.79; DSpark production τ is 3.5–6). The draft is undertrained.
 2. **Eval noise:** 12 prompts/domain — per-domain differences of ±0.03 may be within noise.
-3. **C balance:** 7/16 draft groups under-served on this dump; starved experts for chat/prose
-   partitions plausibly explain the missing high-entropy gains (§5.4 rebalancing not yet applied).
+3. **Partition separability, not balance:** the diagnostic above rules out load imbalance —
+   balance-constrained `C` (0 starved) *hurt* τ. Prose's low τ is a target-partition
+   separability limit at ℓ*=39 (prose~others Jaccard 0.66–0.70), which more data cannot fix.
 4. **τ definition** excludes the guaranteed correction token; production reporting would add +1.
 
 ## Verdict & next steps
@@ -117,7 +118,8 @@ proven rejection sampler; `scripts/test_losslessness.py` shows accepted-token KL
 - **The headline hypothesis (biggest gains on chat/prose) is NOT yet confirmed** — at this
   scale the win is on code/math. Whether the prose/chat gain emerges is the key question for
   the scale-up.
-- **To reach a verdict:** (1) scale the dump to ~1M prompts via vLLM-batched generation
-  (§7.3); (2) apply balance-constrained `C` (§5.4) to stop starving chat/prose groups;
-  (3) run the RQ5 ℓ* ablation and the K/k′/γ sweeps (§9); (4) re-measure with ≥100 eval
-  prompts/domain for tighter error bars.
+- **To reach a verdict:** (1) **RQ5 ℓ\* ablation first** (cheap, ~2h/layer): rebuild `C` from an
+  earlier/mid or aggregate router source layer and retrain E1/E2 — the diagnostic points to
+  signal *source*, not capacity, as prose's bottleneck; (2) only if a better ℓ\* separates
+  prose, scale the dump to ~1M prompts via vLLM-batched generation (§7.3); (3) run the K/k′/γ
+  sweeps (§9); (4) re-measure with ≥100 eval prompts/domain for tighter error bars.
