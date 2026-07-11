@@ -83,8 +83,11 @@ reports/     tables, figures, RQ writeups
       `scripts/build_C.py` emits C + balance stats + domain-overlap report. Pure torch (no sklearn/scipy).
 - [x] **Phase 3 — Draft model.** `draft/` = KV-injected backbone + domain-routed MoE
       (hard/soft/scratch + dense control) + Markov semi-AR head + confidence head.
-      `scripts/test_draft.py` passes fwd/bwd for all §6 rows; active params matched
-      (dense 2.03M ≈ MoE active 2.33M) at 3× MoE total capacity.
+      `scripts/test_draft.py` passes fwd/bwd for all §6 rows (toy vocab). At the real config
+      (V=248320, hidden 2048, 4 layers) the trained checkpoints are: **dense B3 265.6M** (all
+      active); **MoE E1/E2/C1 454M total, ~278M active** (K=16 experts, k'=2). Active params are
+      comparable across variants (RQ1); Markov head (127M) + KV-injected backbone (126M) dominate,
+      MoE adds 201M expert capacity (~1.7× dense total).
 - [x] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
       dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
       **Knowledge-saturation autostop** (validation-plateau early-stop, by-sequence split,
