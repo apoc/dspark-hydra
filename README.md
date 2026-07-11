@@ -1,7 +1,7 @@
 # DSpark-Hydra — Domain-Routed Speculative Drafting via Target-Router Reuse
 
 Research code for testing whether a MoE target model's **own expert router** can be
-reused, for free, to drive a **domain-routed MoE draft model** for speculative
+reused to drive a **domain-routed MoE draft model** for speculative
 decoding — raising per-domain accepted length (τ) on high-entropy domains (chat,
 prose) at equal active draft parameters, without touching the lossless guarantee.
 
@@ -17,8 +17,9 @@ Speculative decoding drafts γ tokens with a small model; the target verifies th
 rejection sampling (lossless for **any** draft distribution). A single small draft
 trained across math/code/chat/prose suffers **capacity dilution**. But the target MoE
 **already contains a trained domain partitioner** — its per-token 256-way expert
-router — and those logits are **already computed** during verification (zero marginal
-cost). We collapse the 256 target experts → K draft experts (map `C`) and route a
+router. Those logits are **free within a target forward you already run** — but obtaining the
+*next anchor's* signal costs a dedicated forward in the current offline engine (`t_anchor ≈ t_verify`;
+not a serving-speed claim — see spec errata). We collapse the 256 target experts → K draft experts (map `C`) and route a
 domain-specialized draft MoE by the target's own decision. Routing changes only the
 draft distribution `p^d`; it can never alter the target `p^t` or the acceptance rule,
 so every variant is output-equivalent to the target alone (verified in Phase 6).
