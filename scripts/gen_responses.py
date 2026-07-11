@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--tp", type=int, default=2, help="tensor-parallel size")
     ap.add_argument("--gpu-mem-util", type=float, default=0.90)
     ap.add_argument("--max-model-len", type=int, default=4096)
+    ap.add_argument("--enforce-eager", action="store_true", help="skip CUDA-graph capture (GB10 workaround)")
+    ap.add_argument("--max-num-seqs", type=int, default=256, help="max concurrent sequences")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -79,7 +81,8 @@ def main():
 
     llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
               trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
-              max_model_len=args.max_model_len)
+              max_model_len=args.max_model_len, enforce_eager=args.enforce_eager,
+              max_num_seqs=args.max_num_seqs)
     sp = SamplingParams(temperature=gcfg.get("temperature", 0.7), top_p=gcfg.get("top_p", 0.8),
                         top_k=gcfg.get("top_k", 20), max_tokens=gcfg.get("max_new_tokens", 256))
 
