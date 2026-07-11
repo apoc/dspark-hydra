@@ -4,6 +4,13 @@
 > **Owner:** (assign)
 > **Target model (frozen):** `Qwen/Qwen3.6-35B-A3B` (`qwen3_5_moe`). Runtime env on DGX Spark (GB10, 128GB unified): **transformers 5.9.0, torch 2.11.0+cu130, safetensors 0.7.0** (config.json stamps 4.57.1, but the checkpoint loads & runs on 5.9.0 — validated in Phase 0; package versions are not pinned to the spec). HF impl class `Qwen3_5MoeForConditionalGeneration`; load via `AutoModelForImageTextToText`, drive text-only.
 > **Prereq reading:** DSpark paper (arXiv 2607.05147, DeepSeek-AI). This doc assumes its terminology (draft/target, accepted length τ, semi-autoregressive head, confidence head, prefix scheduler).
+>
+> **Implementation errata (post-build; these supersede any conflicting prose below).**
+> - **Router signal is NOT zero-marginal-cost in the built engine (cf. §2.2, §2.3, §4).** Router logits are free *within* a target forward you already run, but obtaining the *anchor's* signal requires that forward to include the anchor token. The residual/bonus anchor is absent from the previous verify input, so the offline engine runs a dedicated `extract(target, seq)` pass every round — measured `t_anchor ≈ t_verify` (~0.25–0.34 s): a second full target forward, not free. Folding it into verify needs a KV-cache production engine with a one-round pipeline (unimplemented).
+> - **B3 is a metric-aligned DSpark-style sanity check, NOT a paper reproduction (cf. §4 Phase 4, §8.5).** Target is Qwen3.6-35B-A3B vs the paper's Qwen3-4B (Table 1), and γ=5 (τ ceiling 6) vs the paper's block size 7 (ceiling 8). Raw τ is therefore not range-comparable to Table 1 — use normalized τ = τ/(γ+1) and position-wise acceptance.
+> - **τ = accepted length INCLUDING the bonus token (`n_acc+1` every round)** — DSpark Sec 4.1 fn4 convention; this is what `eval/spec_decode.py` reports.
+> - **Draft size ≈ 265M active (dense) / 454M total, ~278M active (MoE, K=16, k'=2)** at the real config (V=248320, hidden 2048, 4 layers). Any "~2M" is a toy-vocab (V=512) test artifact.
+> - **Balance-constrained `C` (§5.4) was tested and did NOT help** — it lowered prose/macro τ; prose is limited by target-partition separability at ℓ\*=39, not expert starvation.
 
 ---
 
@@ -57,7 +64,7 @@ The ceiling is information-theoretic: even a perfect draft has
 `E[τ] ≤ Σ_k (1 − ½‖p_k^d − p_k^t‖₁)` — high target entropy caps τ regardless of draft size. But a *sub-capacity* draft loses **additional** τ to cross-domain interference. **That interference is what this experiment attacks.**
 
 ### 2.2 The free domain signal
-An MoE router is a learned function `token-context → distribution over 256 experts`. Trained on trillions of tokens, that partition strongly correlates with domain/syntax/entropy regime. During speculative verification the target runs a full forward pass anyway, so its router logits are **already computed** — a zero-marginal-cost domain descriptor. Prior speculative work (DSpark included) discards it.
+An MoE router is a learned function `token-context → distribution over 256 experts`. Trained on trillions of tokens, that partition strongly correlates with domain/syntax/entropy regime. During speculative verification the target runs a full forward pass anyway, so its router logits are **already computed** — a zero-marginal-cost domain descriptor. Prior speculative work (DSpark included) discards it. **[Errata — see top]** This "free" framing holds only for router logits read out of a forward that *already includes* the anchor; the built offline engine pays a dedicated anchor forward each round (`t_anchor ≈ t_verify`), because the residual/bonus anchor is not in the prior verify input.
 
 ### 2.3 Core hypothesis (novel — not in the DSpark paper)
 > Conditioning a domain-routed MoE draft model on the **target's own (collapsed) router decision** yields higher per-domain τ than a dense draft of equal active parameters, primarily by removing cross-domain capacity dilution — and does so without a separately learned domain classifier.
@@ -263,7 +270,7 @@ Metrics:
 - **Phase 1 — Instrumentation dump.** Implement hooks (§7.4); produce the calibration dataset (hiddens + router logits + target dists). Exit: sharded dump + a loader.
 - **Phase 2 — Collapse map `C`.** Implement Methods 1–3 (§5); pick default via balance + a quick τ probe. Exit: serialized `C`, cluster report, balance stats, (optional) centroid init tensors.
 - **Phase 3 — Draft model.** Implement backbone + KV injection + reused-router MoE (Variants A/B + dense/scratch controls) + Markov head + confidence head, in DeepSpec (`github.com/deepseek-ai/DeepSpec`) or an equivalent training repo. Exit: forward/backward passes for all rows in §6 on toy data.
-- **Phase 4 — Train.** Train B1–E2 with identical data/hparams (§7). Exit: converged checkpoints + training curves; **B3 reproduces DSpark-style τ ranges** as a sanity gate.
+- **Phase 4 — Train.** Train B1–E2 with identical data/hparams (§7). Exit: converged checkpoints + training curves; **B3 gives a metric-aligned DSpark-style sanity check** (τ in a plausible regime) — NOT a paper reproduction (different target size and γ; see errata at top).
 - **Phase 5 — Offline eval.** §8.1–8.2 across all domains incl. prose; position-wise curves; specialization heatmaps. Exit: results tables + figures.
 - **Phase 6 — Correctness.** §8.3 for every variant. Exit: lossless-equivalence report.
 - **Phase 7 — (optional) Serving.** Integrate + load test vs native MTP-1. Exit: Pareto + budget-vs-load plots.
