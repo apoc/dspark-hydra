@@ -55,6 +55,8 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2],
                     help="seed replicates; per-(domain,prompt,replicate) RNG derived deterministically")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--d-source", choices=["star", "agg"], default="star",
+                    help="routing descriptor source (RQ5); MUST match the ckpt's training d-source / C router_source")
     args = ap.parse_args()
 
     ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -93,7 +95,8 @@ def main():
             for s in args.seeds:
                 gen = torch.Generator(device=device).manual_seed(derive_seed(dom, pi, s))
                 _, t, na, tim = spec_decode(target, draft, cfg, ids, C=C, max_new=args.max_new,
-                                            inject_layers=inj, l_star=l_star, gen=gen, time_it=True)
+                                            inject_layers=inj, l_star=l_star, gen=gen, time_it=True,
+                                            d_source=args.d_source)
                 td += tim["t_draft"]; tv += tim["t_verify"]; ta += tim["t_anchor"]
                 nrounds += tim["rounds"]
                 if t:

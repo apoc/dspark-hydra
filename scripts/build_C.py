@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--warm-init", action="store_true")
     ap.add_argument("--balance", action="store_true", help="capacity-constrained clustering (§5.4)")
     ap.add_argument("--out", default=str(_REPO_ROOT / "data" / "collapse" / "coact_k16"))
+    ap.add_argument("--router-source", choices=["star", "agg"], default="star",
+                    help="descriptor source for C construction + diagnostics (RQ5): star=l* logits, agg=mean-softmax over full-attn")
     ap.add_argument("--model", default=None, help="model path for weight clustering / warm-init")
     args = ap.parse_args()
 
@@ -59,9 +61,9 @@ def main():
     import os
     model_path = os.path.expanduser(args.model or mcfg["target"]["local_path"])
 
-    print(f"building C: method={args.method} K={args.K} l*={l_star} dump={args.dump}")
+    print(f"building C: method={args.method} K={args.K} l*={l_star} source={args.router_source} dump={args.dump}")
     if args.method == "co_activation":
-        C, info = build_coactivation_C(args.dump, args.K, top_k=top_k, num_experts=num_experts, balanced=args.balance)
+        C, info = build_coactivation_C(args.dump, args.K, top_k=top_k, num_experts=num_experts, balanced=args.balance, source=args.router_source)
     else:
         C, info = build_weight_C(model_path, l_star, args.K, num_experts=num_experts)
 
@@ -78,15 +80,15 @@ def main():
         tensors["centroid_down_proj"] = cents["down_proj"]
         print(f"warm-init centroids: gate_up{tuple(cents['gate_up_proj'].shape)} down{tuple(cents['down_proj'].shape)}")
 
-    bal = group_load(args.dump, C, k_prime=args.k_prime)
+    bal = group_load(args.dump, C, k_prime=args.k_prime, source=args.router_source)
     print(f"balance: cv_freq={bal['cv_freq']:.3f} min={bal['min_freq']:.4f} max={bal['max_freq']:.4f} "
           f"ideal={bal['ideal_freq']:.4f} starved={bal['starved_groups']}")
 
-    mass = per_domain_gate_mass(args.dump, num_experts=num_experts)
+    mass = per_domain_gate_mass(args.dump, num_experts=num_experts, source=args.router_source)
     overlap = domain_overlap(mass)
     print("domain hot-set sizes:", overlap["hot_set_sizes"])
     print("domain Jaccard overlap @80%:", overlap["jaccard"])
-    comp = group_domain_composition(args.dump, C, k_prime=args.k_prime)
+    comp = group_domain_composition(args.dump, C, k_prime=args.k_prime, source=args.router_source)
     print("group x domain composition (rows=groups, cols=" + ",".join(DOMAINS) + "):")
     for g in range(args.K):
         row = "  ".join(f"{comp[g, d]:.2f}" for d in range(len(DOMAINS)))
@@ -96,7 +98,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     save_file(tensors, str(out / "C.safetensors"))
     report = {
-        "method": args.method, "K": args.K, "k_prime": args.k_prime, "l_star": l_star,
+        "method": args.method, "router_source": args.router_source, "K": args.K, "k_prime": args.k_prime, "l_star": l_star,
         "dump": args.dump, "group_sizes": info["group_sizes"], "empty_groups": empty,
         "balance": {k: (v if not torch.is_tensor(v) else v.tolist()) for k, v in bal.items()},
         "domain_overlap": overlap,

@@ -67,6 +67,8 @@ def main():
     ap.add_argument("--min-steps", type=int, default=1000, help="floor before early-stop can trigger")
     ap.add_argument("--max-steps", type=int, default=100000, help="safety cap")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--d-source", choices=["star", "agg"], default="star",
+                    help="routing descriptor source (RQ5); MUST match the C's router_source")
     args = ap.parse_args()
 
     mode = VARIANT_MODE[args.variant]
@@ -95,7 +97,7 @@ def main():
     out = train_draft(model, cfg, args.dump, embed, lm_head, C,
                       device=device, batch_size=args.batch_size, lr=args.lr,
                       patience=args.patience, eval_interval=args.eval_interval,
-                      min_steps=args.min_steps, max_steps=args.max_steps)
+                      min_steps=args.min_steps, max_steps=args.max_steps, d_source=args.d_source)
 
     save_dir = Path(args.out or (_REPO_ROOT / "ckpts" / args.variant))
     save_dir.mkdir(parents=True, exist_ok=True)

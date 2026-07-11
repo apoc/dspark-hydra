@@ -33,7 +33,7 @@ def train_draft(model, cfg, dump_dir, embed, lm_head, C=None, *, device="cuda",
                 batch_size=16, lr=3e-4, weight_decay=0.0, warmup=200,
                 eval_interval=200, patience=6, min_delta=1e-3, min_steps=1000,
                 val_seq_fraction=0.08, val_batches_cap=20, max_steps=100_000,
-                log_every=50, seed=0):
+                log_every=50, seed=0, d_source="star"):
     """Train until knowledge saturation (validation-loss plateau), not a fixed step count.
 
     Early-stop when the validation loss fails to improve by `min_delta` (relative) for
@@ -43,7 +43,7 @@ def train_draft(model, cfg, dump_dir, embed, lm_head, C=None, *, device="cuda",
     checkpoint is restored at the end.
     """
     torch.manual_seed(seed)
-    ds = WindowDataset(dump_dir, cfg.gamma)
+    ds = WindowDataset(dump_dir, cfg.gamma, d_source=d_source)
     # leak-free split: hold out whole sequences
     wseq = torch.tensor(ds.window_seq)
     uniq = torch.unique(wseq)

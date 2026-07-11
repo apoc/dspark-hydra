@@ -10,12 +10,12 @@ from __future__ import annotations
 import torch
 
 
-def group_load(dump_dir: str, C: torch.Tensor, k_prime: int = 2) -> dict:
+def group_load(dump_dir: str, C: torch.Tensor, k_prime: int = 2, source: str = "star") -> dict:
     """Per-draft-group selection frequency + gate mass under reused routing.
 
     For each token: p = softmax(router_star); g = p @ C^T (K,); select top-k' groups.
     """
-    from target.dump import load_shards
+    from target.dump import load_shards, descriptor_probs
 
     K = C.shape[0]
     sel = torch.zeros(K, dtype=torch.float64)
@@ -23,7 +23,7 @@ def group_load(dump_dir: str, C: torch.Tensor, k_prime: int = 2) -> dict:
     n = 0
     Ct = C.t().float()
     for sd, _ in load_shards(dump_dir):
-        p = torch.softmax(sd["router_star"].float(), dim=-1)  # (N,E)
+        p = descriptor_probs(sd, source)                      # (N,E)
         g = p @ Ct                                            # (N,K)
         top = g.topk(min(k_prime, K), dim=-1).indices         # (N,k')
         sel.scatter_add_(0, top.reshape(-1), torch.ones(top.numel(), dtype=torch.float64))

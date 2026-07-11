@@ -17,11 +17,16 @@ from .sampler import accept_or_resample, sample_from
 
 
 @torch.no_grad()
-def _anchor_signals(target, res, pos, inject_layers, l_star):
-    """Extract (hidden_inject:(1,L,H), d:(1,E)) at sequence position `pos`."""
+def _anchor_signals(target, res, pos, inject_layers, l_star, d_source="star", full_attn_layers=None):
+    """Extract (hidden_inject:(1,L,H), d:(1,E)) at position `pos`. d_source 'star' = router
+    logits at l*; 'agg' = log of the mean-softmax over full_attn_layers (so softmax(d)=agg,
+    matching the C built from router_agg)."""
     hs = res.hidden_states
     inj = torch.stack([hs[l + 1][0, pos] for l in inject_layers], dim=0).unsqueeze(0)  # (1,L,H)
-    d = res.router_at(l_star)[pos].unsqueeze(0).float()                                 # (1,E)
+    if d_source == "agg":
+        d = res.router_aggregate(full_attn_layers)[pos].clamp_min(1e-9).log().unsqueeze(0)  # (1,E)
+    else:
+        d = res.router_at(l_star)[pos].unsqueeze(0).float()                                 # (1,E)
     return inj, d
 
 
@@ -41,7 +46,7 @@ def verify_bonus_dists(logits_row, L, gamma):
 
 @torch.no_grad()
 def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_layers=(19, 31, 39),
-                l_star=39, gen=None, greedy_draft=False, time_it=False):
+                l_star=39, gen=None, greedy_draft=False, time_it=False, d_source="star"):
     """Run speculative decoding from prompt_ids:(1,L0).
 
     Returns (out_ids, taus, n_accs, timing). Per round tau = tokens generated = n_acc + 1
@@ -59,6 +64,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
     t_draft = t_verify = t_anchor = 0.0
     rounds = 0
     C = C.to(device) if C is not None else None
+    fa = target.full_attention_layers() if d_source == "agg" else None
 
     def _sync():
         if time_it and device.type == "cuda":
@@ -70,7 +76,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
         _sync(); t_anchor += time.perf_counter() - t0
         L = seq.shape[1]
         anchor = seq[0, -1:].clone()                                  # (1,)
-        inj, d = _anchor_signals(target, res, L - 1, list(inject_layers), l_star)
+        inj, d = _anchor_signals(target, res, L - 1, list(inject_layers), l_star, d_source=d_source, full_attn_layers=fa)
         _sync(); t0 = time.perf_counter()
         proposed, pd = draft.propose(anchor, inj, d, embed, lm_head, C, greedy=greedy_draft, gen=gen)
         _sync(); t_draft += time.perf_counter() - t0

@@ -20,8 +20,9 @@ from target.dump import load_shards
 
 
 class WindowDataset(torch.utils.data.Dataset):
-    def __init__(self, dump_dir: str, gamma: int):
+    def __init__(self, dump_dir: str, gamma: int, d_source: str = "star"):
         self.gamma = gamma
+        self.d_source = d_source
         # load all shards into memory and concatenate (calib dumps fit in RAM)
         parts: dict[str, list[torch.Tensor]] = {}
         for sd, _ in load_shards(dump_dir):
@@ -62,7 +63,8 @@ class WindowDataset(torch.utils.data.Dataset):
             "prev_tokens": nt[:self.gamma],
             "targets": nt[1:self.gamma + 1],
             "hidden_inject": d["hidden_inject"][w[1]],       # (n_inject,H)
-            "d": d["router_star"][w[1]].float(),             # (E,)
+            "d": (d["router_agg"][w[1]].float().clamp_min(1e-9).log() if self.d_source == "agg"
+                  else d["router_star"][w[1]].float()),   # softmax(d)=agg when logged
             "pt_hidden": d["hidden_final"][w[1:self.gamma + 1]],  # (gamma,H)
             "domain_id": d["domain_id"][w[1]],
         }

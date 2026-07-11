@@ -31,6 +31,14 @@ from .hooks import extract
 DOMAINS = ["math", "code", "chat", "prose"]
 DOMAIN_ID = {d: i for i, d in enumerate(DOMAINS)}
 
+
+def descriptor_probs(sd: dict, source: str = "star"):
+    """(N,E) router probability descriptor from a shard. 'star' = softmax of router_star
+    logits at l*; 'agg' = stored mean-softmax over full-attn layers (RQ5 aggregate source)."""
+    if source == "agg":
+        return sd["router_agg"].float()
+    return torch.softmax(sd["router_star"].float(), dim=-1)
+
 @torch.no_grad()
 def generate_response(target, prompt_text: str, gen_cfg: dict, mode: str = "chat", prompt_tokens: int = 128) -> tuple[torch.Tensor, int]:
     """Return (full_ids[1,T], response_start).
