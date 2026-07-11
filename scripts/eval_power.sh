@@ -41,11 +41,16 @@ for row in "${ROWS[@]}"; do
   echo "=== eval $name (ckpt=$ckpt ${cflag:-no-C}) ==="
   t0=$(date +%s)
   # shellcheck disable=SC2086
-  $PY scripts/eval_tau.py --ckpt "$ckpt" $cflag \
-      --per-domain "$PER_DOMAIN" --max-new "$MAXNEW" --skip "$SKIP" --seeds $SEEDS \
-      --out "$REPORTS/tau_${name}_power.json"
-  echo "    $name took $(( $(date +%s) - t0 ))s"
-  VARS="$VARS $name"
+  if $PY scripts/eval_tau.py --ckpt "$ckpt" $cflag \
+        --per-domain "$PER_DOMAIN" --max-new "$MAXNEW" --skip "$SKIP" --seeds $SEEDS \
+        --out "$REPORTS/tau_${name}_power.json"; then
+    echo "    $name ok ($(( $(date +%s) - t0 ))s)"
+    VARS="$VARS $name"            # only successful evals enter analysis
+  else
+    rc=$?
+    echo "    !! $name FAILED (rc=$rc) after $(( $(date +%s) - t0 ))s -- excluded from analysis"
+    rm -f "$REPORTS/tau_${name}_power.json"
+  fi
 done
 
 # analysis (needs the reference present)

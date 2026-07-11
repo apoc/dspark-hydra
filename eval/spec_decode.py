@@ -25,6 +25,20 @@ def _anchor_signals(target, res, pos, inject_layers, l_star):
     return inj, d
 
 
+def verify_bonus_dists(logits_row, L, gamma):
+    """Split target logits over vseq into (verify, bonus) distributions.
+
+    logits_row: (T,V) target logits over vseq = seq(len L) + proposed(len gamma), T=L+gamma.
+    Returns (pt_verify:(gamma,V), pt_bonus:(V,)):
+      - pt_verify[k] (k=0..gamma-1) predicts proposed[k]; logits at index L-1+k.
+      - pt_bonus is the all-accept bonus, ONE past the last proposal: logits at index L-1+gamma.
+        Drawing the bonus from any earlier index is NOT lossless (it samples a distribution
+        that predicts an earlier token, not the token that follows the accepted block).
+    """
+    pt = torch.softmax(logits_row[L - 1: L + gamma].float(), dim=-1)  # (gamma+1, V)
+    return pt[:gamma], pt[gamma]
+
+
 @torch.no_grad()
 def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_layers=(19, 31, 39),
                 l_star=39, gen=None, greedy_draft=False, time_it=False):
@@ -68,7 +82,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
         _sync(); t_verify += time.perf_counter() - t0
         # gamma+1 target dists at indices L-1 .. L-1+gamma: first gamma verify the proposals,
         # the last (index gamma) is the all-accept bonus distribution.
-        pt = torch.softmax(vres.logits[0, L - 1: L + cfg.gamma].float(), dim=-1)  # (g+1,V)
+        pt, pt_bonus = verify_bonus_dists(vres.logits[0], L, cfg.gamma)  # (g,V),(V,)
 
         n_acc = 0
         new_tokens = []
@@ -85,7 +99,7 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
         if n_acc == cfg.gamma:
             # all accepted -> free bonus token from the target dist AFTER the last proposal
             ub = torch.rand((), generator=gen, device=device)
-            bonus = sample_from(pt[cfg.gamma].unsqueeze(0), ub.unsqueeze(0))[0]
+            bonus = sample_from(pt_bonus.unsqueeze(0), ub.unsqueeze(0))[0]
             new_tokens.append(bonus)
         taus.append(n_acc + 1)
         n_accs_all.append(n_acc)
