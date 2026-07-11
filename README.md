@@ -2,8 +2,8 @@
 
 Research code for testing whether a MoE target model's **own expert router** can be
 reused to drive a **domain-routed MoE draft model** for speculative
-decoding — raising per-domain accepted length (τ) on high-entropy domains (chat,
-prose) at equal active draft parameters, without touching the lossless guarantee.
+decoding — raising accepted length (τ) **at equal active draft parameters** (better
+accuracy-per-active-FLOP), without touching the lossless guarantee.
 
 Target model (frozen): **Qwen/Qwen3.6-35B-A3B** (`qwen3_5_moe`, 35B total / ~3B active,
 256 experts × top-8, hidden 2048, 40 MoE layers, hybrid linear+full attention).

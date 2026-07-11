@@ -6,6 +6,7 @@
 > **Prereq reading:** DSpark paper (arXiv 2607.05147, DeepSeek-AI). This doc assumes its terminology (draft/target, accepted length τ, semi-autoregressive head, confidence head, prefix scheduler).
 >
 > **Implementation errata (post-build; these supersede any conflicting prose below).**
+> - **Target (tightened to accuracy-per-active-FLOP).** The provable claim is **higher accepted length τ at *equal active draft FLOPs*** than a dense draft (better accuracy per active param) — NOT a draft-*speed* claim (draft latency is ~5% of `L=(T_draft+T_verify)/τ`; the MoE draft is if anything marginally slower at iso-active), and NOT contingent on chat/prose specifically (that is a hypothesis to test, not a success gate; sanity gains were on code/math). *Efficiency corollary:* a given τ is then reachable at smaller active cost. This supersedes any "largest gains on chat+prose" or "smaller thus faster" framing below.
 > - **Router signal is NOT zero-marginal-cost in the built engine (cf. §2.2, §2.3, §4).** Router logits are free *within* a target forward you already run, but obtaining the *anchor's* signal requires that forward to include the anchor token. The residual/bonus anchor is absent from the previous verify input, so the offline engine runs a dedicated `extract(target, seq)` pass every round — measured `t_anchor ≈ t_verify` (~0.25–0.34 s): a second full target forward, not free. Folding it into verify needs a KV-cache production engine with a one-round pipeline (unimplemented).
 > - **B3 is a metric-aligned DSpark-style sanity check, NOT a paper reproduction (cf. §4 Phase 4, §8.5).** Target is Qwen3.6-35B-A3B vs the paper's Qwen3-4B (Table 1), and γ=5 (τ ceiling 6) vs the paper's block size 7 (ceiling 8). Raw τ is therefore not range-comparable to Table 1 — use normalized τ = τ/(γ+1) and position-wise acceptance.
 > - **τ = accepted length INCLUDING the bonus token (`n_acc+1` every round)** — DSpark Sec 4.1 fn4 convention; this is what `eval/spec_decode.py` reports.
@@ -18,7 +19,7 @@
 
 DSpark builds a small **semi-autoregressive** draft model that predicts N tokens per target forward pass, trained to match the target's output distribution so speculative rejection sampling stays **lossless**. A single small draft model trained across many domains suffers **capacity dilution** — its limited parameters must approximate the target across math/code/chat/prose simultaneously, and per-domain acceptance length (τ) varies a lot (≈6 math → ≈3.5 chat in the paper; prose expected worse).
 
-**Hypothesis:** The target MoE model **already contains a trained domain partitioner** — its per-token expert router. We can **reuse that router signal** (for free, it is already computed during verification) to drive a **domain-routed MoE draft model**, so each draft expert specializes to a semantic partition instead of averaging over all domains. This should raise τ on divergent/out-of-distribution domains (chat, literary prose) at **equal active draft parameters**, without harming the lossless guarantee.
+**Hypothesis:** The target MoE model **already contains a trained domain partitioner** — its per-token expert router. We can **reuse that router signal** (free within the target forward already run at verification) to drive a **domain-routed MoE draft model**, so each draft expert specializes to a semantic partition instead of averaging over all domains. This should **raise accepted length τ at equal active draft FLOPs** (better accuracy-per-active-FLOP) versus a dense draft — most where a single dense draft dilutes across domains — with no separately-learned domain classifier and without harming the lossless guarantee.
 
 **Deliverable of the experiment:** measured per-domain τ and throughput for (native MTP-1) vs (dense DSpark) vs (**DSpark-MoE with reused router**), plus an ablation of the 256→K expert-collapse method and router source layer.
 
@@ -73,7 +74,7 @@ An MoE router is a learned function `token-context → distribution over 256 exp
 
 ## 3. Research questions
 
-- **RQ1 (main):** At equal *active* draft params, does DSpark-MoE (reused router) beat dense DSpark on macro-avg τ, and especially on the highest-entropy domains (chat, prose)?
+- **RQ1 (main):** At equal *active* draft params, does DSpark-MoE (reused router) beat dense DSpark on macro-avg τ (i.e. better accuracy-per-active-FLOP)? Which domains drive any gain (chat/prose hypothesized, **not** assumed)?
 - **RQ2 (the "free lunch"):** Does reusing the target router match/beat a draft router **learned from scratch** at equal cost? I.e., is the target's partition actually the right one for drafting?
 - **RQ3 (interference):** Does routing reduce **per-domain τ variance** and shrink out-of-distribution (prose) degradation vs dense?
 - **RQ4 (mechanism):** Hard (frozen collapse map) vs soft (distilled draft router) reuse — accuracy/latency/robustness tradeoff.
@@ -238,7 +239,7 @@ Metrics:
 - **Verification budget vs concurrency** (scheduler ON) — confirm load-adaptive pruning still holds with MoE draft.
 
 ### 8.5 Success criteria
-- **Primary:** E1 (or E2) macro-avg τ ≥ B3 (dense) by a clear margin, with the **largest gains on chat + prose**, at equal active params, ≤ dense draft latency +1 pt.
+- **Primary:** E1 (or E2) macro-avg τ > B3 (dense) by a clear margin **at equal active params** (higher accuracy-per-active-FLOP), with draft latency ≤ dense +1 pt. Report which domains drive the gain — chat/prose is the motivating hypothesis, not a pass/fail requirement.
 - **RQ2:** E1 ≥ C1 (reused router ≥ from-scratch) → the target partition is genuinely useful.
 - **RQ3:** per-domain τ variance(E1) < variance(B3); prose ratio improved.
 - **Correctness:** all variants pass §8.3 exactly.
