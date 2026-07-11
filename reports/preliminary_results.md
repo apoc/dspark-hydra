@@ -69,12 +69,47 @@ Per-domain (CI-excludes-0 marked ✓): **code** E1 +4.9%✓ / E2 +5.4%✓ / C1 +
 - **γ=5** (ceiling 6) vs production block 7–8; limits headroom.
 - Inference conditional on 2 decoding seeds; n=50 prompts/domain.
 
+## ℓ\* aggregate diagnostic (RQ5, added)
+
+Rebuilt C from the **aggregate** router source (`router_agg` = mean-softmax over full-attn layers,
+already in the dump), with descriptor `d = log(agg)` applied consistently at build/train/eval,
+retrained E1/E2, and re-ran the matched power eval.
+
+**Contrasts vs B3 dense** (paired 95% CI):
+
+| variant | math | code | chat | prose | macro (pooled) |
+|---|--:|--:|--:|--:|--:|
+| E1_hard_agg | +6.7% | +4.0% | −1.0% | **−3.9%** (CI [−0.129,−0.001]) | +1.6% (CI excl 0) |
+| E2_soft_agg | +4.8% | +4.2% | −1.6% | −0.9% (ns) | +1.7% (CI excl 0) |
+
+**Direct contrasts vs the ℓ\*=39 variants** (the RQ5 question — does the source change anything?):
+
+| Δ (agg − star) | math | code | chat | prose | macro |
+|---|--:|--:|--:|--:|--:|
+| E1_hard | **+0.074** (CI excl 0) | −0.016 (ns) | −0.011 (ns) | −0.018 (ns) | +0.007 (ns) |
+| E2_soft | +0.011 (ns) | −0.020 (ns) | −0.010 (ns) | −0.026 (ns) | −0.012 (ns) |
+
+Macro τ: E1_agg 1.779, E2_agg 1.780 — statistically indistinguishable from ℓ\*=39 (1.771 / 1.792).
+**Switching the router source ℓ\*=39 → aggregate changes nothing significantly except a +4% math
+bump for hard reuse; chat, prose, and macro are all within noise (CIs include 0).** The apparent
+"prose down" was not significant. The aggregate does *not* rescue chat/prose (E1_agg is worse than
+dense on prose, but that deficit is inherited from routing generally, not caused by the source
+choice). This matches the agg-source domain Jaccard (chat~prose 0.658, math~prose 0.699 —
+essentially unchanged from ℓ\*=39), reinforcing that prose is a **target-partition separability**
+limit, invariant to this router-source choice.
+
+**Caveat (does NOT close RQ5):** `router_agg` is a mean-of-softmaxes (a *blend*), so this null is
+ambiguous — it cannot separate "no better source exists" from "the blend smoothed away
+prose-separating structure a single sharp layer might retain." A single-layer ℓ\*=19/27 test needs a
+per-layer re-dump (those layers' router logits are not stored) and is the only clean, decisive RQ5
+probe remaining if prose is pursued.
+
 ## Next steps (planned)
 
-1. **ℓ\* aggregate diagnostic** — rebuild C from the aggregate router signal (`router_agg`,
-   already in the dump) instead of ℓ*=39, retrain E1/E2, re-eval. Last cheap mechanistic check
-   of whether a different router source rescues chat/prose.
-2. **Scale to ~1M tokens** — online vLLM hidden-state streaming (per RedHat/`speculators` recipe)
-   or batched offline dump; retrain all variants; re-measure. Tests whether the effect
-   strengthens (or the null holds) once the draft is no longer data-starved.
+1. ~~ℓ\* aggregate diagnostic~~ — **done** (above): the aggregate does not help chat/prose; RQ5 not
+   closed (single-layer ℓ\*=19/27 re-dump is the remaining clean probe).
+2. **Scale to ~1M tokens** — two-stage pipeline implemented: `scripts/gen_responses.py` (vLLM
+   batched generation, TP-parallel, token-id JSONL) → `scripts/dump_from_responses.py` (HF
+   teacher-force extract, same dump schema). Run on a multi-GPU box (2×A100), retrain all variants,
+   re-measure — tests whether any effect strengthens once the draft is no longer data-starved.
 3. **Final writeup** after the scaled run.
