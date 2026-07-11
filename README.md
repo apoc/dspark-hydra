@@ -88,7 +88,11 @@ reports/     tables, figures, RQ writeups
       (V=248320, hidden 2048, 4 layers) the trained checkpoints are: **dense B3 265.6M** (all
       active); **MoE E1/E2/C1 454M total, ~278M active** (K=16 experts, k'=2). Active params are
       comparable across variants (RQ1); Markov head (127M) + KV-injected backbone (126M) dominate,
-      MoE adds 201M expert capacity (~1.7× dense total).
+      MoE adds 201M expert capacity (~1.7× dense total). This ~0.27B budget is **deliberately small**
+      to isolate router reuse at equal active params — **~14× below a production DSpark draft**
+      ([RedHat GLM-5.2 speculator](https://huggingface.co/RedHatAI/GLM-5.2-speculator.dspark): 3.807B
+      total, 5 layers at hidden 6144 / intermediate 12288, τ≈3.97), so **draft capacity, like
+      training-data scale (83k-token dump), is a future lever, not a settled non-issue**.
 - [x] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
       dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
       **Knowledge-saturation autostop** (validation-plateau early-stop, by-sequence split,
