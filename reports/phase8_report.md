@@ -16,6 +16,19 @@ study. One end-to-end pass of the full §6 run matrix on Qwen3.6-35B-A3B.
 - **τ definition:** mean accepted draft tokens per round (+1 bonus only when all γ accepted).
   Consistent across variants; the **relative** comparison is what matters.
 
+## Variants (§6 — all share backbone, KV-injection, Markov + confidence heads, data, and equal active FLOPs)
+
+| # | Name | Draft FFN | Routing | Isolates |
+|---|---|---|---|---|
+| B3 | **dense** | single FFN, width `k'·512`=1024 | none (every token → same FFN) | baseline (standard DSpark) |
+| E1 | **hard-reuse** | MoE, K=16 experts, k'=2 active | **frozen** collapse map: pick top-2 draft groups from the target's own router `g = C·softmax(d)`; only expert weights train | value of reusing the target's partition (RQ1) |
+| E2 | **soft-reuse** | MoE, K=16, k'=2 | draft's own tiny router `R_d(h)`, **distilled toward** `C·softmax(d)` (learns the target partition but can adapt) | frozen vs adaptive reuse (RQ4) |
+| C1 | **from-scratch** | MoE, K=16, k'=2 | draft router `R_d(h)` trained on the drafting loss **only — no target-router signal** | is the reused signal actually useful, or would any learned router do? (RQ2 control) |
+
+`d` = the target's 256-way router logits at layer ℓ*=39, computed for free during verification.
+`C` = offline 256→16 co-activation collapse map. **B3 vs E1/E2** answers "does routing help";
+**E1/E2 vs C1** answers "is the *target's* partition the right one".
+
 ## Results (accepted length τ, higher = better)
 
 | domain | B3 dense | E1 hard-reuse | E2 soft-reuse | C1 from-scratch |
