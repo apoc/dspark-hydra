@@ -29,6 +29,32 @@ study. One end-to-end pass of the full §6 run matrix on Qwen3.6-35B-A3B.
 `C` = offline 256→16 co-activation collapse map. **B3 vs E1/E2** answers "does routing help";
 **E1/E2 vs C1** answers "is the *target's* partition the right one".
 
+## Diagnostic: balance-constrained `C` (does starvation explain the missing prose gain?)
+
+The default co-activation `C` left 7/16 draft groups under-served and prose spread across
+them, suggesting load imbalance might explain why prose τ didn't improve. We rebuilt `C`
+with capacity-constrained clustering (equal 16-expert groups, **0 starved**, cv 1.47→1.07)
+and **retrained** E1/E2 on it (swapping `C` requires retraining — the experts learn their
+group's token distribution).
+
+| variant | C | math | code | chat | prose | macro |
+|---|---|---|---|---|---|---|
+| E1 hard | unbalanced | 0.928 | 0.902 | 0.765 | 0.513 | 0.777 |
+| E1 hard | **balanced** | 0.942 | 0.864 | 0.641 | **0.457** | 0.726 |
+| E2 soft | unbalanced | 0.915 | 0.962 | 0.706 | 0.570 | 0.788 |
+| E2 soft | **balanced** | 0.925 | 0.838 | 0.710 | **0.567** | 0.760 |
+
+**Balance did not help — it hurt or was neutral.** Macro dropped for both (−0.05 E1, −0.03 E2);
+the only gain was math (+0.01). Prose moved the *wrong* way for hard reuse (0.513→0.457) and
+was unchanged for soft (0.570→0.567, within 12-prompt noise). Interpretation: the starved
+groups reflected the **real, imbalanced** co-activation structure — forcing equal groups
+**fragments coherent expert clusters** and degrades routing. Prose's low τ is therefore a
+**target-partition separability** limit (prose~others Jaccard 0.66–0.70 — prose shares ~⅔ of
+its hot target experts with other domains), **not** a capacity/starvation problem. Balancing
+cannot manufacture separability. This de-motivates the balance lever for the scale-up and
+points instead to RQ5 (alternative/aggregate router source layer ℓ*) as the route to test
+for prose.
+
 ## Results (accepted length τ, higher = better)
 
 | domain | B3 dense | E1 hard-reuse | E2 soft-reuse | C1 from-scratch |
