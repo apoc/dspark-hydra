@@ -9,6 +9,7 @@ tokens per round (+1 bonus when all gamma accept). Output is lossless for any dr
 
 from __future__ import annotations
 
+import time
 import torch
 
 from target.hooks import extract
@@ -26,26 +27,48 @@ def _anchor_signals(target, res, pos, inject_layers, l_star):
 
 @torch.no_grad()
 def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_layers=(19, 31, 39),
-                l_star=39, gen=None, greedy_draft=False):
-    """Run speculative decoding from prompt_ids:(1,L0). Returns (out_ids, taus, n_accs)."""
+                l_star=39, gen=None, greedy_draft=False, time_it=False):
+    """Run speculative decoding from prompt_ids:(1,L0).
+
+    Returns (out_ids, taus, n_accs, timing). Per round tau = tokens generated = n_acc + 1
+    (DSpark bonus-token convention, Sec 4.1 fn4): every round emits n_acc accepted draft
+    tokens plus exactly one target token -- a residual-corrected token on rejection, or a
+    free bonus on all-accept. Lossless for any draft. `timing` holds per-round wall-clock
+    sums {t_draft, t_verify, rounds} when time_it=True; t_verify is the single verification
+    forward over vseq (the anchor-signal forward is an offline artifact, excluded from L).
+    """
     device = next(target.model.parameters()).device
     embed = target.model.get_input_embeddings()
     lm_head = target.model.lm_head if hasattr(target.model, "lm_head") else target.model.get_output_embeddings()
     seq = prompt_ids.to(device)
     taus, n_accs_all = [], []
+    t_draft = t_verify = t_anchor = 0.0
+    rounds = 0
     C = C.to(device) if C is not None else None
 
+    def _sync():
+        if time_it and device.type == "cuda":
+            torch.cuda.synchronize()
+
     while seq.shape[1] - prompt_ids.shape[1] < max_new:
-        res = extract(target, seq)
+        _sync(); t0 = time.perf_counter()
+        res = extract(target, seq)                                    # anchor-signal forward
+        _sync(); t_anchor += time.perf_counter() - t0
         L = seq.shape[1]
         anchor = seq[0, -1:].clone()                                  # (1,)
         inj, d = _anchor_signals(target, res, L - 1, list(inject_layers), l_star)
+        _sync(); t0 = time.perf_counter()
         proposed, pd = draft.propose(anchor, inj, d, embed, lm_head, C, greedy=greedy_draft, gen=gen)
+        _sync(); t_draft += time.perf_counter() - t0
         proposed, pd = proposed[0], pd[0]                             # (g,),(g,V)
 
-        vseq = torch.cat([seq, proposed.unsqueeze(0)], dim=1)
+        vseq = torch.cat([seq, proposed.unsqueeze(0)], dim=1)         # (1, L+g)
+        _sync(); t0 = time.perf_counter()
         vres = extract(target, vseq)
-        pt = torch.softmax(vres.logits[0, L - 1: L - 1 + cfg.gamma].float(), dim=-1)  # (g,V)
+        _sync(); t_verify += time.perf_counter() - t0
+        # gamma+1 target dists at indices L-1 .. L-1+gamma: first gamma verify the proposals,
+        # the last (index gamma) is the all-accept bonus distribution.
+        pt = torch.softmax(vres.logits[0, L - 1: L + cfg.gamma].float(), dim=-1)  # (g+1,V)
 
         n_acc = 0
         new_tokens = []
@@ -60,12 +83,13 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
             else:
                 break
         if n_acc == cfg.gamma:
-            # all accepted -> free bonus token from the target dist at the last position
+            # all accepted -> free bonus token from the target dist AFTER the last proposal
             ub = torch.rand((), generator=gen, device=device)
-            bonus = sample_from(pt[cfg.gamma - 1].unsqueeze(0), ub.unsqueeze(0))[0]
+            bonus = sample_from(pt[cfg.gamma].unsqueeze(0), ub.unsqueeze(0))[0]
             new_tokens.append(bonus)
-        taus.append(n_acc + (1 if n_acc == cfg.gamma else 0))
+        taus.append(n_acc + 1)
         n_accs_all.append(n_acc)
+        rounds += 1
 
         add = torch.stack(new_tokens).to(device).unsqueeze(0)
         seq = torch.cat([seq, add], dim=1)
@@ -73,4 +97,5 @@ def spec_decode(target, draft, cfg, prompt_ids, C=None, max_new=128, inject_laye
         if eos is not None and (add[0] == eos).any():
             break
 
-    return seq, taus, n_accs_all
+    timing = {"t_anchor": t_anchor, "t_draft": t_draft, "t_verify": t_verify, "rounds": rounds}
+    return seq, taus, n_accs_all, timing
