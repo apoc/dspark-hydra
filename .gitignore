@@ -1,4 +1,5 @@
-doc/
+doc/*
+!doc/dspark-qwen36-moe-router-reuse-experiment.md
 banks/
 AGENTS.md
 

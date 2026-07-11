@@ -8,7 +8,8 @@ prose) at equal active draft parameters, without touching the lossless guarantee
 Target model (frozen): **Qwen/Qwen3.6-35B-A3B** (`qwen3_5_moe`, 35B total / ~3B active,
 256 experts × top-8, hidden 2048, 40 MoE layers, hybrid linear+full attention).
 
-> Full design: `doc/dspark-qwen36-moe-router-reuse-experiment.md` (local only, gitignored).
+> **Full design spec:** [`doc/dspark-qwen36-moe-router-reuse-experiment.md`](doc/dspark-qwen36-moe-router-reuse-experiment.md) — all `§N` references below point into it.
+> **Based on** DSpark (Cheng et al., DeepSeek-AI, 2026), [arXiv:2607.05147](https://arxiv.org/abs/2607.05147) — draft/target, accepted length τ, semi-AR + confidence head, prefix scheduler.
 
 ## The idea in one paragraph
 
