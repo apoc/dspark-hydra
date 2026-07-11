@@ -70,8 +70,11 @@ def balanced_kmeans(x: torch.Tensor, k: int, iters: int = 50, seed: int = 0):
     return labels, centroids
 
 
-def spectral_labels(affinity: torch.Tensor, k: int, seed: int = 0) -> torch.Tensor:
-    """Spectral clustering on a symmetric non-negative affinity matrix -> labels:(N,)."""
+def spectral_labels(affinity: torch.Tensor, k: int, seed: int = 0, balanced: bool = False) -> torch.Tensor:
+    """Spectral clustering on a symmetric non-negative affinity matrix -> labels:(N,).
+
+    balanced=True uses capacity-constrained k-means on the spectral embedding (§5.4).
+    """
     A = affinity.clone().double()
     A = 0.5 * (A + A.t())
     A.fill_diagonal_(0)
@@ -81,7 +84,10 @@ def spectral_labels(affinity: torch.Tensor, k: int, seed: int = 0) -> torch.Tens
     evals, evecs = torch.linalg.eigh(L)
     emb = evecs[:, :k]  # k smallest eigenvectors
     emb = emb / (emb.norm(dim=1, keepdim=True) + 1e-12)  # row-normalize (Ng-Jordan-Weiss)
-    labels, _ = kmeans(emb.float(), k, seed=seed)
+    if balanced:
+        labels, _ = balanced_kmeans(emb.float(), k, seed=seed)
+    else:
+        labels, _ = kmeans(emb.float(), k, seed=seed)
     return labels
 
 

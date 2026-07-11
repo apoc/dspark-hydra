@@ -41,14 +41,14 @@ def pmi_affinity(M: torch.Tensor, sel: torch.Tensor) -> torch.Tensor:
     return pmi.clamp(min=0.0)
 
 
-def build_coactivation_C(dump_dir: str, k: int, top_k: int = 8, num_experts: int = 256, seed: int = 0):
+def build_coactivation_C(dump_dir: str, k: int, top_k: int = 8, num_experts: int = 256, seed: int = 0, balanced: bool = False):
     """Build the collapse map C via co-activation + spectral clustering.
 
     Returns (C:(k,E), info dict).
     """
     M, sel = coactivation_matrix(dump_dir, top_k, num_experts)
     A = pmi_affinity(M, sel)
-    labels = spectral_labels(A, k, seed=seed)
+    labels = spectral_labels(A, k, seed=seed, balanced=balanced)
     C = labels_to_C(labels, k, num_experts)
     info = {
         "method": "co_activation",

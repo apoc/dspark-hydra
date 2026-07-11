@@ -46,6 +46,7 @@ def main():
     ap.add_argument("--K", type=int, default=16)
     ap.add_argument("--k-prime", type=int, default=2)
     ap.add_argument("--warm-init", action="store_true")
+    ap.add_argument("--balance", action="store_true", help="capacity-constrained clustering (§5.4)")
     ap.add_argument("--out", default=str(_REPO_ROOT / "data" / "collapse" / "coact_k16"))
     ap.add_argument("--model", default=None, help="model path for weight clustering / warm-init")
     args = ap.parse_args()
@@ -60,7 +61,7 @@ def main():
 
     print(f"building C: method={args.method} K={args.K} l*={l_star} dump={args.dump}")
     if args.method == "co_activation":
-        C, info = build_coactivation_C(args.dump, args.K, top_k=top_k, num_experts=num_experts)
+        C, info = build_coactivation_C(args.dump, args.K, top_k=top_k, num_experts=num_experts, balanced=args.balance)
     else:
         C, info = build_weight_C(model_path, l_star, args.K, num_experts=num_experts)
 
