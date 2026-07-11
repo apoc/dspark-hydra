@@ -91,8 +91,8 @@ reports/     tables, figures, RQ writeups
       MoE adds 201M expert capacity (~1.7× dense total). This ~0.27B budget is **deliberately small**
       to isolate router reuse at equal active params — **~14× below a production DSpark draft**
       ([RedHat GLM-5.2 speculator](https://huggingface.co/RedHatAI/GLM-5.2-speculator.dspark): 3.807B
-      total, 5 layers at hidden 6144 / intermediate 12288, τ≈3.97), so **draft capacity, like
-      training-data scale (83k-token dump), is a future lever, not a settled non-issue**.
+      total, 5 layers at hidden 6144 / intermediate 12288; accepted length 3.97, bonus-excluded ≈ our
+      n_acc), so **draft capacity, like training-data scale (83k-token dump), is a future lever, not a settled non-issue**.
 - [x] **Phase 4 — Train.** Losses (`train/losses.py`: ce/tv/conf/route/bal), windowed
       dataloader (`train/data.py`), loop (`train/loop.py`), `scripts/train_draft.py`.
       **Knowledge-saturation autostop** (validation-plateau early-stop, by-sequence split,
