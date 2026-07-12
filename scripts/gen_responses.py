@@ -64,6 +64,8 @@ def main():
     ap.add_argument("--enforce-eager", action="store_true", help="skip CUDA-graph capture (GB10 workaround)")
     ap.add_argument("--max-num-seqs", type=int, default=256, help="max concurrent sequences")
     ap.add_argument("--chunk", type=int, default=1024, help="generate+flush per chunk (preempt-safe resume unit)")
+    ap.add_argument("--shard", type=int, default=0, help="data-parallel shard index")
+    ap.add_argument("--nshards", type=int, default=1, help="this job handles recs[shard::nshards]")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -93,6 +95,10 @@ def main():
         for i, p in enumerate(prompts):
             recs.append((f"{dom}:{i}", dom, mode,
                          build_prompt_ids(tok, p, mode, ptoks, gcfg.get("enable_thinking", False))))
+
+    if args.nshards > 1:
+        recs = recs[args.shard::args.nshards]
+        print(f"shard {args.shard}/{args.nshards}: {len(recs)} recs this job", flush=True)
 
     llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
               trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
