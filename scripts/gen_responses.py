@@ -43,10 +43,13 @@ def build_prompt_ids(tok, text: str, mode: str, prompt_tokens: int, enable_think
         return tok(text, truncation=True, max_length=prompt_tokens).input_ids
     msgs = [{"role": "user", "content": text}]
     try:
-        return tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True,
-                                       enable_thinking=enable_thinking)
+        enc = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt",
+                                      return_dict=True, enable_thinking=enable_thinking)
     except TypeError:
-        return tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True)
+        enc = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt",
+                                      return_dict=True)
+    ids = enc.input_ids if hasattr(enc, "input_ids") else enc["input_ids"]
+    return ids[0].tolist()
 
 
 def main():
