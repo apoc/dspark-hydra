@@ -138,7 +138,8 @@ scale/capacity would widen any gap is untested.
   and **all effects are <5 %**. Worth re-testing at production scale, not shipping on this.
 - **Reuse specifically is unproven, not disproven:** *frozen* target-router reuse (E1) is rejected
   (doesn't beat dense), while *distilled* reuse (E2) is indistinguishable from a scratch router — can't
-  confirm or refute a small edge (underpowered). Don't rely on reuse as necessary; don't claim it useless.
+  confirm or refute a small edge (underpowered). **When indifferent at this power, from-scratch is the
+  simpler default** (no router extraction/distillation); adopt distilled reuse only if a properly-powered run shows an edge.
 - Effects are **below 5 %**; before shipping, the decisive tests are: production-scale data + larger
   draft (isolate capacity), the single-layer ℓ\* re-dump (clean RQ5), and a learned-router-aware
   training schedule (the autostop fix). Absent those, dense DSpark remains the safe default.
