@@ -1,37 +1,34 @@
 # Final report — Domain-Routed Speculative Drafting via Target-Router Reuse (DSpark-MoE on Qwen3.6-35B-A3B)
 
-> **⚠ SUPERSEDED / UPDATE IN FLIGHT (do not act on §0 bottom line below).** The v2 E2/C1 rows
-> were trained with an autostop (patience 6) that **prematurely stopped the learned-router variants**
-> (E2 soft, C1 scratch) at 6400 steps / val_loss 4.28. A forced-longer retrain (E2_long, 19600 steps,
-> val_loss **3.742** — best of all variants) shows E2-soft **beats dense on all four domains including
-> prose** (macro 1.833 vs 1.797). The "Not supported / edge shrinks with data" conclusion below is a
-> **training artifact** and is being rewritten pending C1_long (forced retrain) + corrected paired CIs.
-
 **Target (tightened, spec §0):** at **equal active draft FLOPs**, does reusing the frozen target
 MoE router to drive a domain-partitioned MoE draft raise accepted length τ over a dense draft
 (better accuracy-per-active-FLOP)? Which domains benefit is a question, not a success gate.
 Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is explicitly not claimed
 (draft latency is ~5 % of `L=(T_draft+T_verify)/τ`).
 
-> **Bottom line:** **Not supported.** MoE routing buys a small, real gain on **code** (and, at
-> small data, math) at equal active params, but (a) it does **not** help the hypothesized
-> high-entropy domains (chat, prose), (b) it does **not** require reusing the target's router
-> (from-scratch ≈ reuse at small data), and (c) **the advantage shrinks with data**: at 3× tokens
-> the dense baseline catches up on math and prose, leaving routing's durable edge on **code only**,
-> with a macro gain whose 95 % CI includes zero. τ is lossless throughout (§8.3 gate passed).
+> **Bottom line (corrected after fixing a training-autostop artifact — see §5).**
+> At 3× training data with **adequate training**, a MoE-routed draft **modestly but significantly
+> beats a dense draft** of equal active params on macro-τ (E2 soft +2.0 %, C1 scratch +1.4 %; both
+> 95 % CIs exclude 0), **including a significant prose gain** (C1 +3.9 %). **However:** (1) every
+> effect is **below the 5 % relevance reference line**; (2) **reusing the target's router is *not* the
+> lever** — a from-scratch learned router does statistically as well (E2 soft ≈ C1 scratch, macro
+> Δ CI includes 0), so the paper's specific "free lunch from target-router reuse" novelty is **not
+> validated**; the benefit is from *having a routed MoE draft*, learnable without the target signal.
+> τ is lossless throughout (§8.3 gate passed).
 
 ---
 
 ## 1. Setup
 
 - **Target (frozen):** Qwen3.6-35B-A3B (bf16), DGX Spark (GB10). Draft ≈ **266 M active** (dense) /
-  **454 M total, ~278 M active** (MoE, K=16, k'=2) — a *deliberately small* budget to isolate
-  routing at equal active params (~14× below a production DSpark draft; see `preliminary_results.md`).
+  **454 M total, ~278 M active** (MoE, K=16, k'=2) — a *deliberately small* budget to isolate routing
+  at equal active params (~14× below a production DSpark draft; RedHat's public GLM-5.2 DSpark
+  speculator is 3.807 B, τ≈3.97).
 - **Variants** (share backbone, KV-injection, Markov + confidence heads, data, equal active FLOPs):
   **B3** dense · **E1** hard-reuse (frozen collapse map C) · **E2** soft-reuse (distilled draft
   router) · **C1** from-scratch (learned router, no target signal).
 - **Two training scales:** **v1 = 83 k tokens** (400 seqs), **v2 = 246 k tokens** (1200 seqs, 3×),
-  identical uniform per-domain sampling (token mix ≈ 29/20/20/30 math/code/chat/prose; matches v1,
+  identical uniform per-domain sampling (token mix ≈ 29/20/20/30 math/code/chat/prose; matches v1;
   neither matches DSpark's 39/39/18/4 design — out of scope).
 - **Eval:** offline τ (scheduler OFF, γ=5, T=1.0), **τ = n_acc+1** (DSpark Sec 4.1 fn4). 50 held-out
   prompts/domain × 2 seeds, max_new 32; **held-out confirmation blocks disjoint from training**
@@ -40,90 +37,96 @@ Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is exp
 
 ## 2. Results — mean τ (higher better; ceiling 6)
 
-**v1 (83 k tokens):**
+**v1 (83 k tokens):**  *(learned-router E2/C1 likely undertrained here too — see §5; treat as lower bounds)*
 
 | variant | math | code | chat | prose | macro |
 |---|--:|--:|--:|--:|--:|
 | B3 dense | 1.820 | 1.759 | 1.845 | 1.579 | 1.751 |
 | E1 hard | 1.868 | 1.845 | 1.837 | 1.535 | 1.771 |
-| E2 soft | 1.897 | 1.854 | 1.825 | 1.591 | **1.792** |
+| E2 soft | 1.897 | 1.854 | 1.825 | 1.591 | 1.792 |
 | C1 scratch | 1.875 | 1.848 | 1.820 | 1.558 | 1.775 |
 
-**v2 (246 k tokens, 3×):**
+**v2 (246 k tokens, 3×) — all variants trained to genuine saturation:**
 
-| variant | math | code | chat | prose | macro | train steps / val_loss |
+| variant | math | code | chat | prose | macro | steps / val_loss |
 |---|--:|--:|--:|--:|--:|--:|
 | B3 dense | 1.876 | 1.870 | 1.805 | 1.639 | 1.797 | 12000 / 3.90 |
-| E1 hard | 1.875 | 1.953 | 1.812 | 1.639 | **1.820** | 14800 / 3.76 |
-| E2 soft | 1.844 | 1.784 | 1.758 | 1.576 | 1.740 | 6400 / 4.28 † |
-| C1 scratch | 1.795 | 1.725 | 1.732 | 1.611 | 1.716 | 6400 / 4.28 † |
+| E1 hard | 1.875 | 1.953 | 1.812 | 1.639 | 1.820 | 14800 / 3.76 |
+| **E2 soft** | 1.932 | 1.902 | 1.816 | 1.681 | **1.833** | 19600 / 3.742 |
+| C1 scratch | 1.912 | 1.895 | 1.781 | 1.703 | 1.823 | 20200 / 3.713 |
 
-† E2/C1 early-plateaued (see §4, RQ4).
+## 3. Paired contrasts, v2 (Δ = variant − B3 dense; 95 % cluster-bootstrap CI)
 
-## 3. Paired contrasts vs dense (Δ = variant − B3; 95 % CI)
+| variant | math | code | chat | prose | **macro** |
+|---|--:|--:|--:|--:|--:|
+| E1 hard | −0.001 | **+0.083** ✓ | +0.007 | +0.000 | +0.022 [−0.000,+0.044] |
+| E2 soft | **+0.056** ✓ | +0.032 | +0.011 | +0.042 | **+0.035 [+0.014,+0.057]** ✓ |
+| C1 scratch | +0.036 | +0.025 | −0.024 | **+0.065** ✓ | **+0.026 [+0.004,+0.048]** ✓ |
 
-**v1 macro:** E1 +0.021 [−0.003,+0.044] (ns) · E2 **+0.041 [+0.019,+0.062]** (excl 0) · C1 +0.025
-[−0.001,+0.049] (borderline). Per-domain: gains concentrated on **code** (+5 %) and **math** (+3–4 %);
-chat/prose flat-to-negative.
-
-**v2 macro:** E1 +0.022 [−0.000,+0.044] (**touches 0**) · E2 −0.057 [−0.078,−0.036] · C1 −0.082
-[−0.103,−0.060]. E1 per-domain: **code +0.083 [+0.048,+0.120]** (excl 0) is the *only* significant
-effect; **math −0.001, chat +0.007, prose 0.000 — all ties**.
+✓ = 95 % CI excludes 0. **All below the 5 % relevance line.** **RQ2 direct contrast E2−C1 (reuse −
+scratch): macro +0.010 [−0.013, +0.032] — CI includes 0** (reuse not significantly better than scratch).
 
 ## 4. Research questions
 
-**RQ1 (does reused-router MoE beat dense at equal active params?).** **Weakly, and only on code.**
-At v1, E2 (soft) beat dense by +2.3 % macro (CI excl 0) but below the 5 % reference line, on
-code/math not chat/prose. At v2 (both cleanly trained), **E1-hard's only significant edge over dense
-is code (+4.4 %); math and prose become ties as dense catches up; macro edge CI includes zero.** The
-apparent v1 math/prose gains were largely a **low-data artifact**.
+**RQ1 (routed MoE vs dense at equal active params).** **Yes, modestly, at scale.** At v2 with adequate
+training, E2 (+2.0 %) and C1 (+1.4 %) beat dense on macro-τ with CIs excluding 0; E1 (+1.2 %) touches
+0. Gains are broad but small — no variant clears 5 %. (At v1 the ranking was similar but the
+learned-router variants were undertrained, §5.)
 
-**RQ2 (is the *reused* router the lever?).** **No.** v1: from-scratch C1 (1.775) ≈ soft-reuse E2
-(1.792) and beat hard E1 (1.771) — the benefit is *having a routed MoE*, not the target's partition.
+**RQ2 (is the *reused* router the lever?).** **No — the central negative.** A from-scratch learned
+router (C1) matches distilled reuse (E2): macro Δ = +0.010, CI includes 0; C1 even has the best prose.
+Routing helps, but the target's partition is not needed to get it. The paper's "free lunch from
+reusing the target router" is not validated on this testbed.
 
-**RQ3 (interference / prose).** **Not supported.** Routing never improved prose over dense at either
-scale; at v2 dense's prose *rose* with data (1.579→1.639) and routing matched it (tie).
+**RQ3 (prose / interference).** **Improved at scale (with training).** Unlike v1 (routing flat/negative
+on prose), v2 shows real prose gains — C1 +3.9 % (CI excl 0), E2 +2.6 % — once both data and training
+are adequate. Prose is no longer the failure domain, though separability at ℓ\* is unchanged (§ RQ5).
 
-**RQ4 (hard vs soft reuse).** v1: soft ≥ scratch ≥ hard. v2: **reversed** — the learned-router
-variants (E2 soft, C1 scratch) converged to a **worse minimum** (val 4.28) than frozen-C E1 (3.76)
-and dense (3.90), plateauing early (oscillating, not descending). *(Confirmatory forced-12k-step E2
-retrain: RESULT PENDING — will state whether the plateau is genuine or hparam-induced.)* Under
-identical hparams, learning the draft router does not scale as well as a frozen map here.
+**RQ4 (hard vs soft reuse) + methodological finding.** Adaptive routers (soft E2, scratch C1) reach
+**lower val_loss** (3.71–3.74) than frozen-map hard E1 (3.76) and dense (3.90), and slightly higher τ.
+**Critical caveat:** the saturation-autostop (patience 6) **systematically under-trained the
+learned-router variants** — their loss plateaus *temporarily* (~step 6400, val 4.28) then resumes
+descending (delayed router↔expert co-adaptation). A first v2 pass early-stopped E2/C1 there and made
+them look *worse than dense* (macro 1.740/1.716) — a pure artifact. Forced ≥12 k-step retrains
+(E2_long 19.6 k, C1_long 20.2 k) recovered them to the numbers above. Dense/hard (no learned router)
+converged smoothly and were unaffected. **Lesson: patience-based early-stop needs a higher patience /
+min-steps floor for learned-router drafts, or it produces false negatives.**
 
-**RQ5 (router source ℓ\*).** **Aggregate source ≠ prose lever.** Rebuilding C from the aggregate
-router (`router_agg`, mean-softmax over full-attn layers) and re-training/evaluating (consistent
-`d=log(agg)`) changed **nothing significant except +4 % E1 math**; chat/prose/macro were within noise
-vs ℓ\*=39. Domain Jaccard is ~unchanged (chat~prose 0.66–0.68 at both scales) → prose is a
-**target-partition separability** limit, invariant to sample size and to this source choice.
-*Caveat:* the aggregate is a *blend*; a single sharp earlier/mid layer (ℓ\*=19/27) is untested
-(needs a per-layer re-dump) and is the only clean RQ5 probe left — so RQ5 is not fully closed.
+**RQ5 (router source ℓ\*).** **Aggregate source is not the prose lever.** Rebuilding C from the
+aggregate router (mean-softmax over full-attn layers; consistent `d=log(agg)`) changed nothing
+significant vs ℓ\*=39 except +4 % E1 math; domain Jaccard ≈ unchanged (chat~prose 0.66–0.68 at both
+scales). Caveat: the aggregate is a *blend*; a single sharp earlier/mid layer (ℓ\*=19/27) is untested
+(needs a per-layer re-dump) and is the only clean RQ5 probe left — RQ5 not fully closed.
 
-**RQ6 (lossless).** **Confirmed by construction + test.** Rejection sampler KL to p^t ≈ 3e-5
-(adversarial drafts); the all-accept bonus-index bug was fixed and regression-tested. Routing only
-reshapes p^d; output distribution is unchanged for every variant.
+**RQ6 (lossless).** **Confirmed by construction + test.** Rejection-sampler KL to p^t ≈ 3e-5; the
+all-accept bonus-index bug was fixed and regression-tested. Routing only reshapes p^d.
 
-## 5. Scaling read (does the undertraining caveat change the conclusion?)
+## 5. Scaling read
 
-3× data **partially answers** v1's dominant caveat: it did **not** broaden routing's benefit — it
-**narrowed** it (dense caught up on math/prose; only code survives). This is a *sharper negative*, not
-a failure to measure. **Caveat:** 3× (246 k tokens) is still ~1 % of production scale (RedHat's public
-GLM-5.2 DSpark used ~500 k prompts × full responses × 3 epochs), and our draft is ~14× smaller than a
-production draft — so this shows **more data does not help routing at this budget**, leaving open
-(untested) whether production-scale data + capacity would behave differently.
+3× data **strengthens** the routed-vs-dense case (v1 macro Δ +1.2–2.3 % → v2 +1.2–2.0 % but now with
+significant prose gains and cleanly-trained learned routers), while leaving the **reuse-vs-scratch**
+verdict negative. It also surfaced the autostop artifact (§ RQ4) that would otherwise have produced a
+false negative. **Caveats:** (a) 3× (246 k tokens) is still ~1 % of production scale (RedHat ~500 k
+prompts × full responses × 3 epochs); (b) the draft is ~14× smaller than production; (c) cross-scale
+τ comparisons (v1 skip=200 vs v2 skip=300) are on **disjoint prompt blocks** — suggestive, not paired;
+the within-scale paired contrasts (§3) are the clean evidence. So this shows routing helps *modestly*
+at this budget and that reuse ≠ scratch, leaving open whether production scale/capacity would widen
+either gap.
 
 ## 6. Recommendation
 
-**Do not ship router-reuse on this evidence.** The one durable effect (code τ +4–5 % at equal active
-params) does not require reusing the target router, does not extend to the high-entropy domains the
-hypothesis targeted, and yields a macro gain indistinguishable from zero once the dense baseline is
-adequately trained. If pursued further, the decisive next tests are: (a) **production-scale data +
-larger draft** (isolate capacity from routing), (b) the **single-layer ℓ\* re-dump** (clean RQ5), and
-(c) **hparam-tuned learned-router training** at scale (the E2/C1 plateau). Absent those, the frozen
-dense DSpark draft is the recommended configuration.
+- **MoE routing in the draft is a mild, real positive** at equal active params (macro +1.4–2.0 % at
+  3× data, incl. prose) — worth pursuing at production scale.
+- **Do not adopt target-router *reuse* specifically** on this evidence: a from-scratch learned router
+  is simpler and statistically as good (RQ2). The paper's reuse "free lunch" is unconfirmed here.
+- Effects are **below 5 %**; before shipping, the decisive tests are: production-scale data + larger
+  draft (isolate capacity), the single-layer ℓ\* re-dump (clean RQ5), and a learned-router-aware
+  training schedule (the autostop fix). Absent those, dense DSpark remains the safe default.
 
 ## 7. Artifacts
 
-Per-variant raw τ (per-prompt×seed): `reports/tau_{B3_dense,E1_hard,E2_soft,C1_scratch}{,_v2}_power.json`;
-aggregate diagnostic: `*_agg_power.json`. Paired-bootstrap summaries: `power_summary{,_v2,_agg,
-_agg_vs_star_E1,_agg_vs_star_E2}.{md,json}`. Preliminary write-up: `preliminary_results.md`. Spec +
-errata: `doc/dspark-qwen36-moe-router-reuse-experiment.md`.
+Raw per-prompt×seed τ: `reports/tau_{B3_dense,E1_hard,E2_soft,C1_scratch}{,_v2}_power.json`, corrected
+learned-router v2: `tau_{E2_soft_long,C1_scratch_long}_v2_power.json`; aggregate diagnostic:
+`*_agg_power.json`. Paired-bootstrap summaries: `power_summary*.{md,json}` (incl. `_v2_corrected`,
+`_v2_reuse_vs_scratch`, `_agg_vs_star_{E1,E2}`). Preliminary write-up: `preliminary_results.md`.
+Spec + errata: `doc/dspark-qwen36-moe-router-reuse-experiment.md`.
