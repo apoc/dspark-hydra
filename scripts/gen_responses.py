@@ -63,6 +63,7 @@ def main():
     ap.add_argument("--max-model-len", type=int, default=4096)
     ap.add_argument("--enforce-eager", action="store_true", help="skip CUDA-graph capture (GB10 workaround)")
     ap.add_argument("--max-num-seqs", type=int, default=256, help="max concurrent sequences")
+    ap.add_argument("--chunk", type=int, default=1024, help="generate+flush per chunk (preempt-safe resume unit)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -77,7 +78,7 @@ def main():
     tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
     # build all prompt-token-id lists first (cheap), then one big batched generate
-    recs: list[tuple[str, str, list[int]]] = []
+    recs: list[tuple[str, str, str, list[int]]] = []  # (uid, domain, mode, prompt_ids)
     for dom, dspec in ccfg["domains"].items():
         if args.per_domain is not None:
             n = args.per_domain
@@ -89,8 +90,9 @@ def main():
         ptoks = dspec.get("prompt_tokens", 128)
         prompts = stream_prompts(dspec["hf"], n, strip_gutenberg_flag=dspec.get("strip_gutenberg", False))
         print(f"[{dom}] {len(prompts)} prompts (mode={mode})", flush=True)
-        for p in prompts:
-            recs.append((dom, mode, build_prompt_ids(tok, p, mode, ptoks, gcfg.get("enable_thinking", False))))
+        for i, p in enumerate(prompts):
+            recs.append((f"{dom}:{i}", dom, mode,
+                         build_prompt_ids(tok, p, mode, ptoks, gcfg.get("enable_thinking", False))))
 
     llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
               trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
@@ -100,18 +102,34 @@ def main():
     sp = SamplingParams(temperature=gcfg.get("temperature", 0.7), top_p=gcfg.get("top_p", 0.8),
                         top_k=gcfg.get("top_k", 20), max_tokens=gcfg.get("max_new_tokens", 256))
 
-    t0 = time.time()
-    outs = llm.generate([{"prompt_token_ids": pid} for _, _, pid in recs], sp)
-    dt = time.time() - t0
+    # resume: skip uids already in the output; chunked append+flush so preemption loses <=1 chunk
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    done = set()
+    if out_path.exists():
+        for line in open(out_path):
+            try:
+                done.add(json.loads(line)["uid"])
+            except Exception:
+                pass
+    todo = [r for r in recs if r[0] not in done]
+    print(f"{len(recs)} total, {len(done)} already done, {len(todo)} to generate", flush=True)
 
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    t0 = time.time()
     ntok = 0
-    with open(args.out, "w") as f:
-        for (dom, mode, pid), o in zip(recs, outs):
-            rid = list(o.outputs[0].token_ids)
-            ntok += len(rid)
-            f.write(json.dumps({"domain": dom, "mode": mode, "prompt_ids": pid, "response_ids": rid}) + "\n")
-    print(f"generated {len(recs)} seqs, {ntok} response tokens in {dt:.0f}s "
+    with open(out_path, "a") as f:
+        for s in range(0, len(todo), args.chunk):
+            batch = todo[s:s + args.chunk]
+            outs = llm.generate([{"prompt_token_ids": pid} for _, _, _, pid in batch], sp)
+            for (uid, dom, mode, pid), o in zip(batch, outs):
+                rid = list(o.outputs[0].token_ids)
+                ntok += len(rid)
+                f.write(json.dumps({"uid": uid, "domain": dom, "mode": mode,
+                                    "prompt_ids": pid, "response_ids": rid}) + "\n")
+            f.flush()
+            print(f"  chunk: {s + len(batch)}/{len(todo)} seqs, {ntok} tok, {time.time() - t0:.0f}s", flush=True)
+    dt = time.time() - t0
+    print(f"generated {len(todo)} seqs, {ntok} response tokens in {dt:.0f}s "
           f"({ntok / max(dt, 1):.0f} tok/s) -> {args.out}")
 
 
