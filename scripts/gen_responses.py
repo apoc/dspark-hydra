@@ -6,9 +6,12 @@ on GB10). Runs on a multi-GPU box (e.g. 2xA100, --tp 2). Stores prompt/response 
 no re-tokenization drift. Sampling matches configs/corpus.yaml `generation` (the same
 distribution the current dump draws from).
 
-Run (on the GPU box):
-    python scripts/gen_responses.py --per-domain 5000 --tp 2 --out data/gen_v2.jsonl
-    python scripts/gen_responses.py --limit 20 --tp 2 --out data/gen_smoke.jsonl   # smoke
+Run (hotdog A100, via srun on a *-preempt partition; needs the venv `bin` on PATH for ninja, and
+flashinfer disabled — env set at import below). The 35B fits one 80 GB A100, so --tp 1 works:
+    srun -p a100-preempt --gres=gpu:1 -c 8 --mem=110G -t 08:00:00 \
+        env PATH="$HOME/devel/vllm-venv/bin:$PATH" \
+        ~/devel/vllm-venv/bin/python scripts/gen_responses.py --per-domain 5000 --tp 1 --enforce-eager --out data/gen_v2.jsonl
+    # smoke: --limit 20 (same env)
 """
 
 from __future__ import annotations
@@ -21,6 +24,12 @@ import time
 from pathlib import Path
 
 import yaml
+
+# vLLM on hotdog (multimodal Qwen3.6-35B, driven text-only): use vLLM's native Torch sampler.
+# flashinfer's top-k/top-p kernel JIT-compiles against curand.h, which the CUDA-13 install lacks
+# (no root). Must be set BEFORE `import vllm` (done in main()).
+os.environ.setdefault("VLLM_USE_FLASHINFER_SAMPLER", "0")
+os.environ.setdefault("VLLM_USE_FLASHINFER", "0")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT))
@@ -82,7 +91,8 @@ def main():
     llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
               trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
               max_model_len=args.max_model_len, enforce_eager=args.enforce_eager,
-              max_num_seqs=args.max_num_seqs)
+              max_num_seqs=args.max_num_seqs,
+              limit_mm_per_prompt={"image": 0, "video": 0})
     sp = SamplingParams(temperature=gcfg.get("temperature", 0.7), top_p=gcfg.get("top_p", 0.8),
                         top_k=gcfg.get("top_k", 20), max_tokens=gcfg.get("max_new_tokens", 256))
 
