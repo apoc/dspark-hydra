@@ -11,7 +11,9 @@ domains:
   code:
     fraction: 0.39
     mode: chat
-    hf: {path: google-research-datasets/mbpp, name: full, split: train, field: text}
+    hf:                     # mbpp is data-limited (~374); augment with 18k python instructions
+      - {path: google-research-datasets/mbpp, name: full, split: train, field: text}
+      - {path: iamtarun/python_code_instructions_18k_alpaca, split: train, field: instruction}
   chat:
     fraction: 0.18
     mode: chat

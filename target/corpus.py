@@ -17,14 +17,13 @@ def strip_gutenberg(text: str) -> str | None:
     return body[500:]  # nudge past chapter headers / TOC
 
 
-def stream_prompts(hf: dict, n: int, strip_gutenberg_flag: bool = False) -> list[str]:
-    """Stream up to `n` non-empty prompt strings from an HF dataset spec."""
+def _stream_one(hf: dict, need: int, strip_gutenberg_flag: bool, out: list[str]) -> None:
+    """Append non-empty prompt strings from one HF dataset spec until len(out) >= need."""
     from datasets import load_dataset
 
     kw = {"streaming": True, "split": hf["split"]}
     ds = load_dataset(hf["path"], hf["name"], **kw) if hf.get("name") else load_dataset(hf["path"], **kw)
     field = hf["field"]
-    out: list[str] = []
     for ex in ds:
         txt = ex.get(field)
         if not txt:
@@ -36,6 +35,18 @@ def stream_prompts(hf: dict, n: int, strip_gutenberg_flag: bool = False) -> list
                 continue
         if txt.strip():
             out.append(txt)
+        if len(out) >= need:
+            break
+
+
+def stream_prompts(hf, n: int, strip_gutenberg_flag: bool = False) -> list[str]:
+    """Stream up to `n` non-empty prompts from an HF dataset spec, or a LIST of specs
+    (drawn in order until `n` reached — lets a data-limited domain like code augment
+    a small dataset with a larger one)."""
+    specs = hf if isinstance(hf, list) else [hf]
+    out: list[str] = []
+    for spec in specs:
         if len(out) >= n:
             break
-    return out
+        _stream_one(spec, n, strip_gutenberg_flag, out)
+    return out[:n]
