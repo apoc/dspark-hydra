@@ -1,5 +1,12 @@
 # Final report — Domain-Routed Speculative Drafting via Target-Router Reuse (DSpark-MoE on Qwen3.6-35B-A3B)
 
+> **⚠ SUPERSEDED / UPDATE IN FLIGHT (do not act on §0 bottom line below).** The v2 E2/C1 rows
+> were trained with an autostop (patience 6) that **prematurely stopped the learned-router variants**
+> (E2 soft, C1 scratch) at 6400 steps / val_loss 4.28. A forced-longer retrain (E2_long, 19600 steps,
+> val_loss **3.742** — best of all variants) shows E2-soft **beats dense on all four domains including
+> prose** (macro 1.833 vs 1.797). The "Not supported / edge shrinks with data" conclusion below is a
+> **training artifact** and is being rewritten pending C1_long (forced retrain) + corrected paired CIs.
+
 **Target (tightened, spec §0):** at **equal active draft FLOPs**, does reusing the frozen target
 MoE router to drive a domain-partitioned MoE draft raise accepted length τ over a dense draft
 (better accuracy-per-active-FLOP)? Which domains benefit is a question, not a success gate.
