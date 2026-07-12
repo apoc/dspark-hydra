@@ -79,8 +79,8 @@ def main():
 
     tok = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
 
-    # build all prompt-token-id lists first (cheap), then one big batched generate
-    recs: list[tuple[str, str, str, list[int]]] = []  # (uid, domain, mode, prompt_ids)
+    # 1. collect prompt TEXT + meta cheaply (stream only); tokenize AFTER shard+resume
+    items: list[tuple[str, str, str, int, str]] = []  # (uid, domain, mode, ptoks, text)
     for dom, dspec in ccfg["domains"].items():
         if args.per_domain is not None:
             n = args.per_domain
@@ -93,22 +93,13 @@ def main():
         prompts = stream_prompts(dspec["hf"], n, strip_gutenberg_flag=dspec.get("strip_gutenberg", False))
         print(f"[{dom}] {len(prompts)} prompts (mode={mode})", flush=True)
         for i, p in enumerate(prompts):
-            recs.append((f"{dom}:{i}", dom, mode,
-                         build_prompt_ids(tok, p, mode, ptoks, gcfg.get("enable_thinking", False))))
+            items.append((f"{dom}:{i}", dom, mode, ptoks, p))
 
+    # 2. data-parallel shard BEFORE tokenizing
     if args.nshards > 1:
-        recs = recs[args.shard::args.nshards]
-        print(f"shard {args.shard}/{args.nshards}: {len(recs)} recs this job", flush=True)
+        items = items[args.shard::args.nshards]
 
-    llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
-              trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
-              max_model_len=args.max_model_len, enforce_eager=args.enforce_eager,
-              max_num_seqs=args.max_num_seqs,
-              limit_mm_per_prompt={"image": 0, "video": 0})
-    sp = SamplingParams(temperature=gcfg.get("temperature", 0.7), top_p=gcfg.get("top_p", 0.8),
-                        top_k=gcfg.get("top_k", 20), max_tokens=gcfg.get("max_new_tokens", 256))
-
-    # resume: skip uids already in the output; chunked append+flush so preemption loses <=1 chunk
+    # 3. resume: drop uids already written (so a preempt-requeue re-tokenizes only what's left)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = set()
@@ -118,8 +109,20 @@ def main():
                 done.add(json.loads(line)["uid"])
             except Exception:
                 pass
-    todo = [r for r in recs if r[0] not in done]
-    print(f"{len(recs)} total, {len(done)} already done, {len(todo)} to generate", flush=True)
+    items = [it for it in items if it[0] not in done]
+    print(f"shard {args.shard}/{args.nshards}: {len(done)} done, {len(items)} to generate", flush=True)
+
+    # 4. tokenize ONLY this shard's remaining prompts
+    todo = [(uid, dom, mode, build_prompt_ids(tok, text, mode, ptoks, gcfg.get("enable_thinking", False)))
+            for (uid, dom, mode, ptoks, text) in items]
+
+    llm = LLM(model=model_path, tensor_parallel_size=args.tp, dtype="bfloat16",
+              trust_remote_code=True, gpu_memory_utilization=args.gpu_mem_util,
+              max_model_len=args.max_model_len, enforce_eager=args.enforce_eager,
+              max_num_seqs=args.max_num_seqs,
+              limit_mm_per_prompt={"image": 0, "video": 0})
+    sp = SamplingParams(temperature=gcfg.get("temperature", 0.7), top_p=gcfg.get("top_p", 0.8),
+                        top_k=gcfg.get("top_k", 20), max_tokens=gcfg.get("max_new_tokens", 256))
 
     t0 = time.time()
     ntok = 0
