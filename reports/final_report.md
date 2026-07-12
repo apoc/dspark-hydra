@@ -6,17 +6,20 @@ MoE router to drive a domain-partitioned MoE draft raise accepted length τ over
 Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is explicitly not claimed
 (draft latency is ~5 % of `L=(T_draft+T_verify)/τ`).
 
-> **Bottom line (corrected after fixing a training-autostop artifact — see §5).**
-> At 3× training data with **adequate training**, a MoE-routed draft **modestly but significantly
-> beats a dense draft** of equal active params on macro-τ (E2 soft +2.0 %, C1 scratch +1.4 %; both
-> 95 % CIs exclude 0), **including a significant prose gain** (C1 +3.9 %). **However:** (1) every
-> effect is **below the 5 % relevance reference line**; (2) **the target's router contributes nothing.**
-> The *frozen* reuse variant (E1 — the literal "free lunch") is the **weakest** routed variant and does
-> **not** clear 0 vs dense ([−0.000,+0.044]); warm-starting from the target (E2, distilled) gives **no**
-> edge over cold-start (C1, scratch: E2−C1 macro Δ CI includes 0). Only *learned* routers beat dense —
-> where the router comes from is irrelevant. The paper's specific "free lunch from target-router reuse"
-> novelty is **not validated**; the benefit is from *having a learned routed MoE draft*.
-> τ is lossless throughout (§8.3 gate passed).
+> **Bottom line (corrected: autostop artifact fixed — §5; multiple-comparison correction applied — §3).**
+> At 3× data with adequate training, an *adaptive*-router MoE draft shows a **small, correction-robust
+> edge** over dense on macro-τ — but **only the soft variant E2** survives Holm correction over the
+> primary family (macro **+2.0 %**, p=.001; math +3.0 %), alongside **E1's code gain** (+4.4 %). **All
+> are below the 5 % relevance line — nothing clears both correction-significance *and* practical
+> relevance.** The broader "routing helps everywhere incl. prose" reading does **not** survive: C1's
+> macro (+1.4 %) and prose (+3.9 %) gains were uncorrected/exploratory and collapse under correction
+> (98.75 % CIs include 0). **Reuse verdict (split):** (i) the *frozen* target router (E1 — the literal
+> "free lunch") is **rejected** — it doesn't beat dense. (ii) *Distilled* reuse (E2) vs from-scratch
+> (C1) is **statistically indistinguishable** (E2−C1 CI includes 0, p=.38) — a *failure to reject*, not
+> proven equivalence; and E2 (reuse) is in fact the lone correction-robust dense-beater while C1
+> (scratch) fails Holm, so a *small reuse edge we're underpowered to prove* can't be excluded. Net: the
+> "free lunch" is **not demonstrated** — frozen reuse fails; distilled-reuse-vs-scratch is unresolved at
+> this scale/power. What clearly helps is a *learned* routed MoE draft, and only modestly. τ lossless (§8.3).
 
 ---
 
@@ -57,7 +60,7 @@ Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is exp
 | **E2 soft** | 1.932 | 1.902 | 1.816 | 1.681 | **1.833** | 19600 / 3.742 |
 | C1 scratch | 1.912 | 1.895 | 1.781 | 1.703 | 1.823 | 20200 / 3.713 |
 
-## 3. Paired contrasts, v2 (Δ = variant − B3 dense; 95 % cluster-bootstrap CI)
+## 3. Paired contrasts, v2 (Δ = variant − B3 dense; *uncorrected* 95 % cluster-bootstrap CI — Holm-corrected verdict in note)
 
 | variant | math | code | chat | prose | **macro** |
 |---|--:|--:|--:|--:|--:|
@@ -65,27 +68,36 @@ Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is exp
 | E2 soft | **+0.056** ✓ | +0.032 | +0.011 | +0.042 | **+0.035 [+0.014,+0.057]** ✓ |
 | C1 scratch | +0.036 | +0.025 | −0.024 | **+0.065** ✓ | **+0.026 [+0.004,+0.048]** ✓ |
 
-✓ = 95 % CI excludes 0. **All below the 5 % relevance line.** **RQ2 direct contrast E2−C1 (reuse −
-scratch): macro +0.010 [−0.013, +0.032] — CI includes 0** (reuse not significantly better than scratch).
+✓ = *uncorrected* 95 % CI excludes 0 (exploratory). **With Holm correction** (4 primary macro tests;
+12 per-domain), **only E2 macro (+2.0 %, p=.001), E2 math (+3.0 %), and E1 code (+4.4 %) survive**;
+**C1 macro (+1.4 %) and the C1/E2 prose gains do NOT** (98.75 % CIs include 0) — treat those as
+exploratory. **Every survivor is still below the 5 % relevance line.** **RQ2 contrast E2−C1 (reuse −
+scratch): +0.010 [−0.013, +0.032], p=.38 — a robust null** (reuse no better than scratch).
 
 ## 4. Research questions
 
-**RQ1 (routed MoE vs dense at equal active params).** **Yes, modestly, at scale.** At v2 with adequate
-training, E2 (+2.0 %) and C1 (+1.4 %) beat dense on macro-τ with CIs excluding 0; E1 (+1.2 %) touches
-0. Gains are broad but small — no variant clears 5 %. (At v1 the ranking was similar but the
-learned-router variants were undertrained, §5.)
+**RQ1 (routed MoE vs dense at equal active params).** **A small, correction-robust "yes" — but for the
+adaptive *soft* variant only.** After Holm correction, **only E2 (soft) beats dense** on macro (+2.0 %,
+p=.001) and math (+3.0 %); C1 (scratch, +1.4 %) is directionally similar and *statistically
+indistinguishable from E2*, yet does **not** independently clear the corrected bar; frozen E1 touches
+0. All gains are <5 %. Routing helps, but weakly and only via the adaptive variant that best exploits
+the extra data. (v1 ranking similar; learned-router variants undertrained there, §5.)
 
-**RQ2 (is the *reused* router the lever?).** **No — the central negative, in two parts.** (i) The
+**RQ2 (is the *reused* router the lever?).** **Not demonstrated — a split verdict.** (i) The
 *frozen* target router (E1 — the paper's literal "free lunch") is the **weakest** routed variant:
 macro Δ +0.022 vs dense with CI touching 0 ([−0.000,+0.044]) and the worst routed val_loss (3.76).
-(ii) Warm-starting from the target (E2, distilled) gives **no** edge over cold-start (C1, scratch):
-E2−C1 macro Δ +0.010, CI includes 0; C1 even has the best prose. So the target's router contributes
-nothing — neither as-is nor as init. What helps is a *learned* routed MoE draft; its provenance is
-irrelevant. The paper's "free lunch from reusing the target router" is not validated on this testbed.
+(ii) *Distilled* reuse (E2) vs from-scratch (C1) is **statistically indistinguishable** (E2−C1 macro
+Δ +0.010, CI includes 0, p=.38) — but a *failure to reject* is **not** proven equivalence (no
+TOST/margin pre-specified). Tension: E2 (reuse) is the **lone** correction-robust dense-beater while
+C1 (scratch) fails Holm — more consistent with *underpowered to distinguish (possibly a small reuse
+edge)* than with true equivalence. **Net:** frozen reuse is rejected; any distilled-reuse advantage is
+unresolved at this scale/power. The paper's "free lunch from reuse" is **not demonstrated** here.
 
-**RQ3 (prose / interference).** **Improved at scale (with training).** Unlike v1 (routing flat/negative
-on prose), v2 shows real prose gains — C1 +3.9 % (CI excl 0), E2 +2.6 % — once both data and training
-are adequate. Prose is no longer the failure domain, though separability at ℓ\* is unchanged (§ RQ5).
+**RQ3 (prose / interference).** **Not a robust win.** Point estimates turned positive at v2 (C1 +3.9 %,
+E2 +2.6 %) vs v1's flat/negative, but **neither survives multiple-comparison correction** (C1 prose
+p=.029 > Holm thr .005; E2 prose p=.15) — the earlier "prose improved at scale" read was an
+uncorrected artifact of 12 per-domain tests. Prose is *no longer clearly the failure domain*, but the
+hypothesized high-entropy benefit is **not** demonstrated. Separability at ℓ\* unchanged (§ RQ5).
 
 **RQ4 (hard vs soft reuse) + methodological finding.** Adaptive routers (soft E2, scratch C1) reach
 **lower val_loss** (3.71–3.74) than frozen-map hard E1 (3.76) and dense (3.90), and slightly higher τ.
@@ -108,22 +120,25 @@ all-accept bonus-index bug was fixed and regression-tested. Routing only reshape
 
 ## 5. Scaling read
 
-3× data **strengthens** the routed-vs-dense case (v1 macro Δ +1.2–2.3 % → v2 +1.2–2.0 % but now with
-significant prose gains and cleanly-trained learned routers), while leaving the **reuse-vs-scratch**
-verdict negative. It also surfaced the autostop artifact (§ RQ4) that would otherwise have produced a
-false negative. **Caveats:** (a) 3× (246 k tokens) is still ~1 % of production scale (RedHat ~500 k
-prompts × full responses × 3 epochs); (b) the draft is ~14× smaller than production; (c) cross-scale
-τ comparisons (v1 skip=200 vs v2 skip=300) are on **disjoint prompt blocks** — suggestive, not paired;
-the within-scale paired contrasts (§3) are the clean evidence. So this shows routing helps *modestly*
-at this budget and that reuse ≠ scratch, leaving open whether production scale/capacity would widen
-either gap.
+3× data **modestly strengthens** the routed-vs-dense signal (v1 macro Δ +1.2–2.3 % → v2 +1.2–2.0 %),
+and cleanly-trained learned routers now sit at or above dense — but after correction only E2's
+macro/math edge and E1's code gain survive (prose gains do **not**). It also surfaced the autostop
+artifact (§ RQ4) that would otherwise have produced a false negative. **Caveats:** (a) 3× (246 k
+tokens) is still ~1 % of production scale (RedHat ~500 k prompts × full responses × 3 epochs); (b) the
+draft is ~14× smaller than production; (c) cross-scale τ comparisons (v1 skip=200 vs v2 skip=300) are
+on **disjoint prompt blocks** — suggestive, not paired; the within-scale paired contrasts (§3) are the
+clean evidence. So routing helps *modestly* at this budget; the reuse-vs-scratch question is
+**unresolved** (frozen reuse rejected, distilled-vs-scratch underpowered), and whether production
+scale/capacity would widen any gap is untested.
 
 ## 6. Recommendation
 
-- **MoE routing in the draft is a mild, real positive** at equal active params (macro +1.4–2.0 % at
-  3× data, incl. prose) — worth pursuing at production scale.
-- **Do not adopt target-router *reuse* specifically** on this evidence: a from-scratch learned router
-  is simpler and statistically as good (RQ2). The paper's reuse "free lunch" is unconfirmed here.
+- **A learned routed MoE draft is a mild, real positive** at equal active params — but small
+  (correction-robust only for E2's macro +2.0 % / math and E1's code gain; prose does *not* survive)
+  and **all effects are <5 %**. Worth re-testing at production scale, not shipping on this.
+- **Reuse specifically is unproven, not disproven:** *frozen* target-router reuse (E1) is rejected
+  (doesn't beat dense), while *distilled* reuse (E2) is indistinguishable from a scratch router — can't
+  confirm or refute a small edge (underpowered). Don't rely on reuse as necessary; don't claim it useless.
 - Effects are **below 5 %**; before shipping, the decisive tests are: production-scale data + larger
   draft (isolate capacity), the single-layer ℓ\* re-dump (clean RQ5), and a learned-router-aware
   training schedule (the autostop fix). Absent those, dense DSpark remains the safe default.
