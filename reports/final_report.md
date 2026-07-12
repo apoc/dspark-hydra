@@ -10,10 +10,12 @@ Efficiency (same τ at smaller active cost) is a corollary; draft *speed* is exp
 > At 3× training data with **adequate training**, a MoE-routed draft **modestly but significantly
 > beats a dense draft** of equal active params on macro-τ (E2 soft +2.0 %, C1 scratch +1.4 %; both
 > 95 % CIs exclude 0), **including a significant prose gain** (C1 +3.9 %). **However:** (1) every
-> effect is **below the 5 % relevance reference line**; (2) **reusing the target's router is *not* the
-> lever** — a from-scratch learned router does statistically as well (E2 soft ≈ C1 scratch, macro
-> Δ CI includes 0), so the paper's specific "free lunch from target-router reuse" novelty is **not
-> validated**; the benefit is from *having a routed MoE draft*, learnable without the target signal.
+> effect is **below the 5 % relevance reference line**; (2) **the target's router contributes nothing.**
+> The *frozen* reuse variant (E1 — the literal "free lunch") is the **weakest** routed variant and does
+> **not** clear 0 vs dense ([−0.000,+0.044]); warm-starting from the target (E2, distilled) gives **no**
+> edge over cold-start (C1, scratch: E2−C1 macro Δ CI includes 0). Only *learned* routers beat dense —
+> where the router comes from is irrelevant. The paper's specific "free lunch from target-router reuse"
+> novelty is **not validated**; the benefit is from *having a learned routed MoE draft*.
 > τ is lossless throughout (§8.3 gate passed).
 
 ---
@@ -73,10 +75,13 @@ training, E2 (+2.0 %) and C1 (+1.4 %) beat dense on macro-τ with CIs excluding 
 0. Gains are broad but small — no variant clears 5 %. (At v1 the ranking was similar but the
 learned-router variants were undertrained, §5.)
 
-**RQ2 (is the *reused* router the lever?).** **No — the central negative.** A from-scratch learned
-router (C1) matches distilled reuse (E2): macro Δ = +0.010, CI includes 0; C1 even has the best prose.
-Routing helps, but the target's partition is not needed to get it. The paper's "free lunch from
-reusing the target router" is not validated on this testbed.
+**RQ2 (is the *reused* router the lever?).** **No — the central negative, in two parts.** (i) The
+*frozen* target router (E1 — the paper's literal "free lunch") is the **weakest** routed variant:
+macro Δ +0.022 vs dense with CI touching 0 ([−0.000,+0.044]) and the worst routed val_loss (3.76).
+(ii) Warm-starting from the target (E2, distilled) gives **no** edge over cold-start (C1, scratch):
+E2−C1 macro Δ +0.010, CI includes 0; C1 even has the best prose. So the target's router contributes
+nothing — neither as-is nor as init. What helps is a *learned* routed MoE draft; its provenance is
+irrelevant. The paper's "free lunch from reusing the target router" is not validated on this testbed.
 
 **RQ3 (prose / interference).** **Improved at scale (with training).** Unlike v1 (routing flat/negative
 on prose), v2 shows real prose gains — C1 +3.9 % (CI excl 0), E2 +2.6 % — once both data and training
