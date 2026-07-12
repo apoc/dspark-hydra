@@ -133,12 +133,12 @@ class ShardWriter:
     def __post_init__(self):
         Path(self.out_dir).mkdir(parents=True, exist_ok=True)
 
-    def add(self, rec: dict[str, torch.Tensor], domain: str):
+    def add(self, rec: dict[str, torch.Tensor], domain: str, seq_id: int | None = None):
         if not rec:
             return
         n = rec["next_token"].shape[0]
         rec = dict(rec)
-        rec["seq_id"] = torch.full((n,), self._seq, dtype=torch.int32)
+        rec["seq_id"] = torch.full((n,), self._seq if seq_id is None else seq_id, dtype=torch.int32)
         rec["domain_id"] = torch.full((n,), DOMAIN_ID[domain], dtype=torch.int32)
         for k, v in rec.items():
             self._buf.setdefault(k, []).append(v)
