@@ -8,6 +8,8 @@ examples. The collapse map C (hard/soft) is frozen and passed in.
 from __future__ import annotations
 
 import time
+import os
+from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
@@ -33,7 +35,7 @@ def train_draft(model, cfg, dump_dir, embed, lm_head, C=None, *, device="cuda",
                 batch_size=16, lr=3e-4, weight_decay=0.0, warmup=200,
                 eval_interval=200, patience=6, min_delta=1e-3, min_steps=1000,
                 val_seq_fraction=0.08, val_batches_cap=20, max_steps=100_000,
-                log_every=50, seed=0, d_source="star"):
+                log_every=50, seed=0, d_source="star", ckpt_path=None):
     """Train until knowledge saturation (validation-loss plateau), not a fixed step count.
 
     Early-stop when the validation loss fails to improve by `min_delta` (relative) for
@@ -75,6 +77,11 @@ def train_draft(model, cfg, dump_dir, embed, lm_head, C=None, *, device="cuda",
           f"(patience={patience} eval_interval={eval_interval} min_delta={min_delta}) cap={max_steps}", flush=True)
 
     best, best_state, bad, step, t0 = float("inf"), None, 0, 0, time.time()
+    if ckpt_path is not None and Path(ckpt_path).exists():
+        ck = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(ck["model"]); opt.load_state_dict(ck["opt"]); sched.load_state_dict(ck["sched"])
+        step, best, bad, best_state = ck["step"], ck["best"], ck["bad"], ck["best_state"]
+        print(f"  resumed {ckpt_path} @ step {step} (best={best:.4f} bad={bad})", flush=True)
     stop = False
     while not stop:
         for batch in dl:
@@ -103,6 +110,11 @@ def train_draft(model, cfg, dump_dir, embed, lm_head, C=None, *, device="cuda",
                     bad += 1
                 print(f"  [eval] step {step:6d} val_loss={vl:.4f} best={best:.4f} "
                       f"bad={bad}/{patience} {'*' if improved else ''}", flush=True)
+                if ckpt_path is not None:
+                    torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
+                                "sched": sched.state_dict(), "step": step, "best": best,
+                                "bad": bad, "best_state": best_state}, str(ckpt_path) + ".tmp")
+                    os.replace(str(ckpt_path) + ".tmp", ckpt_path)
                 if bad >= patience and step >= min_steps:
                     print(f"  SATURATED at step {step} (val plateau, >= min_steps {min_steps}); "
                           f"restoring best (val={best:.4f})", flush=True)

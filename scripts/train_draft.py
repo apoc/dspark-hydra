@@ -70,6 +70,11 @@ def main():
     ap.add_argument("--d-source", choices=["star", "agg"], default="star",
                     help="routing descriptor source (RQ5); MUST match the C's router_source")
     args = ap.parse_args()
+    save_dir = Path(args.out or (_REPO_ROOT / "ckpts" / args.variant))
+    if (save_dir / "draft.pt").exists():
+        print(f"{save_dir}/draft.pt exists -> variant already trained, skipping", flush=True)
+        return
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     mode = VARIANT_MODE[args.variant]
     print(f"loading frozen embed + LM head (~2GB) ...", flush=True)
@@ -97,10 +102,9 @@ def main():
     out = train_draft(model, cfg, args.dump, embed, lm_head, C,
                       device=device, batch_size=args.batch_size, lr=args.lr,
                       patience=args.patience, eval_interval=args.eval_interval,
-                      min_steps=args.min_steps, max_steps=args.max_steps, d_source=args.d_source)
+                      min_steps=args.min_steps, max_steps=args.max_steps, d_source=args.d_source,
+                      ckpt_path=save_dir / "ckpt.pt")
 
-    save_dir = Path(args.out or (_REPO_ROOT / "ckpts" / args.variant))
-    save_dir.mkdir(parents=True, exist_ok=True)
     torch.save({"model": out.state_dict(), "cfg": vars(cfg)}, save_dir / "draft.pt")
     print(f"saved -> {save_dir / 'draft.pt'}")
 
