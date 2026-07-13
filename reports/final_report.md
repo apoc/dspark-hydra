@@ -135,12 +135,14 @@ all-accept bonus-index bug was fixed and regression-tested. Routing only reshape
 
 **v1→v2→v3 (83 k → 246 k → 4.3 M tokens).** The soft-reuse advantage *grows with data*: E2−dense macro
 +2.3 %→+2.0 %→**+4.4 %**, and E2−scratch (the reuse-specific lever) +0.9 %→+1.0 %→**+5.3 %**, crossing
-from n.s. to correction-robust between v2 and v3. **Confound:** v3 differs from v2 in *both* data volume
-(17×) *and* corpus (code augmented with 18 k python-instructions) *and* eval block (skip 5000 vs 300),
-so the reversal cannot be pinned on data scale alone — the clean evidence is the *within-v3* paired
-contrast. **Standing caveats:** v3 is still ~1–8 % of production data; draft ~14× below production;
-absolute τ≈1.9 vs ~4; prose never benefits. Whether production capacity widens or narrows the reuse gap
-is untested (draft held at ~0.27 B).
+from n.s. to correction-robust between v2 and v3. **The reversal is not merely the code-corpus
+confound:** math and chat use the *same* datasets as v2 (only code was augmented), and **both show the
+same E2−C1 reversal** (math +0.056→**+0.122**; chat +0.011→**+0.139**) — so data *volume*, not the code
+augmentation, is the driver (the augmentation only affects the code domain; skip 5000 vs 300 remains a
+minor eval-block difference). **Notably, absolute τ barely rose** (B3 1.797→1.845, E2 1.833→1.926):
+17× data did *not* make the drafts much better — it made the *reuse advantage* larger and detectable.
+**Standing caveats:** v3 is still ~1–8 % of production data; draft ~14× below production; absolute
+τ≈1.9 vs ~4; prose never benefits; whether production capacity widens or narrows the gap is untested.
 
 ## 6. Recommendation
 
