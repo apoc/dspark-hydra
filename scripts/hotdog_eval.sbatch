@@ -1,10 +1,11 @@
 #!/bin/bash
-# Phase C stage 5: powered eval of the 4 v3 variants (sharded by variant; preempt-safe via
-# skip-if-output-exists). Submit AFTER training:
+# Phase C stage 5: powered eval of the 4 v3 variants (sharded by variant).
+# Submit AFTER training:
 #   sbatch --array=0-3 scripts/hotdog_eval.sbatch
 #   # then: power_stats vs B3_dense_v3, and E2 vs C1 (RQ2 primary endpoint)
-# n=100/domain x 3 seeds (2x v2 pooled), --skip 5000 => held-out block DISJOINT from the
-# v3 training range (prompts[0:5000]/domain). --requeue; a finished variant self-skips.
+# n=50/domain x 2 seeds (v2-matched, for a clean v2->v3 comparison), --skip 5000 => held-out
+# block DISJOINT from the v3 training range (prompts[0:5000]/domain). --requeue: eval_tau
+# resumes per-domain from its own partial JSON (no sbatch-level skip -> partials are safe).
 #SBATCH -p a100-preempt
 #SBATCH --gres=gpu:1
 #SBATCH -c 8
@@ -24,8 +25,7 @@ case "$V" in
   *)               CF="" ;;
 esac
 OUT="reports/tau_${V}_v3_power.json"
-if [ -f "$OUT" ]; then echo "$OUT exists -> skipping"; exit 0; fi
-echo "=== eval $V on $(hostname) $(date) ==="
+echo "=== eval $V on $(hostname) $(date) -> $OUT ==="
 $PY -u scripts/eval_tau.py --ckpt "ckpts_v3/$V/draft.pt" $CF \
-  --per-domain 100 --seeds 0 1 2 --skip 5000 --max-new 32 --d-source star --out "$OUT"
+  --per-domain 50 --seeds 0 1 --skip 5000 --max-new 32 --d-source star --out "$OUT"
 echo "=== $V done $(date) ==="

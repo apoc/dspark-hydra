@@ -77,7 +77,24 @@ def main():
         return int(hashlib.sha256(f"{dom}:{pi}:{s}".encode()).hexdigest()[:8], 16)
 
     results = {}
+    if args.out and Path(args.out).exists():
+        try:
+            prev = json.load(open(args.out)).get("results", {})
+            results = {k: v for k, v in prev.items() if k != "macro_avg_tau"}
+            print(f"resuming eval: {list(results)} already done", flush=True)
+        except Exception:
+            results = {}
+
+    def _save():
+        if not args.out:
+            return
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        json.dump({"ckpt": args.ckpt, "C": args.C, "gamma": cfg.gamma, "max_new": args.max_new,
+                   "skip": args.skip, "per_domain": args.per_domain, "seeds": args.seeds,
+                   "results": results}, open(args.out, "w"), indent=2)
     for dom, dspec in corpus["domains"].items():
+        if dom in results:
+            continue
         mode = dspec.get("mode", "chat")
         pool = stream_prompts(dspec["hf"], args.skip + args.per_domain,
                               strip_gutenberg_flag=dspec.get("strip_gutenberg", False))
@@ -128,15 +145,13 @@ def main():
         print(f"[{dom}] mean_tau={mean:.3f} norm={mean / (cfg.gamma + 1):.3f} "
               f"n={len(prompt_means)}x{len(args.seeds)} pos_acc={['%.2f' % x for x in posacc]} "
               f"t_draft={lat['t_draft']:.1f}ms t_verify={lat['t_verify']:.1f}ms", flush=True)
+        _save()
 
     macro = sum(v["mean_tau"] for v in results.values()) / max(len(results), 1)
     results["macro_avg_tau"] = macro
     print(f"\nMACRO-AVG tau = {macro:.3f}")
+    _save()
     if args.out:
-        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        json.dump({"ckpt": args.ckpt, "C": args.C, "gamma": cfg.gamma, "max_new": args.max_new,
-                   "skip": args.skip, "per_domain": args.per_domain, "seeds": args.seeds,
-                   "results": results}, open(args.out, "w"), indent=2)
         print(f"saved -> {args.out}")
 
 
